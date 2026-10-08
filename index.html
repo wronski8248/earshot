@@ -169,6 +169,9 @@ main{grid-row:1;grid-column:2;overflow-y:auto;min-width:0;position:relative;scro
 #aiSheet .ib{height:auto;min-height:40px;padding:8px 14px;font-weight:600}
 .hint2{font-size:12px!important;color:var(--muted)}
 .bar.big{height:8px;border-radius:4px;flex:none}
+#aiDiag summary{cursor:pointer;font-size:12.5px;color:var(--muted);font-weight:600}
+#aiLog{margin:8px 0 0;max-height:180px;overflow:auto;font-family:var(--f-mono);font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-word;
+  background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px;color:var(--ink)}
 #aiProgText{font-family:var(--f-mono);font-size:12.5px!important;color:var(--muted);font-variant-numeric:tabular-nums}
 .sheetbtns{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between}
 
@@ -303,6 +306,11 @@ main{grid-row:1;grid-column:2;overflow-y:auto;min-width:0;position:relative;scro
   <div id="aiDone" hidden style="display:flex;flex-direction:column;gap:8px">
     <p id="aiDoneText">The AI voice is ready.</p>
   </div>
+  <details id="aiDiag">
+    <summary>Technical details</summary>
+    <pre id="aiLog">Nothing yet. Details appear here while the voice starts.</pre>
+    <button class="ib" id="aiCopy" type="button" style="margin-top:8px">Copy details</button>
+  </details>
   <div class="sheetbtns">
     <button class="ib" id="aiRemove" type="button" hidden>Remove download</button>
     <button class="ib" id="aiClose" type="button">Close</button>
@@ -782,7 +790,17 @@ function aiEnsure(playAfter){
   if(AI.state==="loading"){updateStatus();return}
   aiLoad(settings.aiMode,false);
 }
+const AILOG=[];let aiT0=0,aiLastTick=0;
+function aiLog(m){AILOG.push(m);if(AILOG.length>80)AILOG.shift();const el=$("#aiLog");if(el){el.textContent=AILOG.join("\n");el.scrollTop=el.scrollHeight}}
+setInterval(()=>{
+  if(AI.state!=="loading"||!aiLastTick)return;
+  const quiet=(performance.now()-aiLastTick)/1000;
+  if(quiet>12&&!AI.quietNoted){AI.quietNoted=true;aiLog("(no signal from the engine for "+Math.round(quiet)+"s: it is either busy or the phone stopped it)")}
+},3000);
 function aiLoad(mode,fromSheet){
+  AILOG.length=0;aiT0=performance.now();aiLastTick=performance.now();AI.quietNoted=false;
+  aiLog(navigator.userAgent.replace(/^Mozilla\/5.0 /,"").slice(0,140));
+  aiLog("page: "+(self.crossOriginIsolated?"isolated":"not isolated")+", memory hint: "+(navigator.deviceMemory||"n/a")+" GB, cores: "+(navigator.hardwareConcurrency||"n/a"));
   AI.state="loading";AI.loaded=0;AI.total=0;AI.stage="";AI.slow=false;updateAIUI();updateStatus();
   clearTimeout(AI.watch);
   AI.watch=setTimeout(()=>{if(AI.state==="loading"){AI.slow=true;updateAIUI()}},150000);
@@ -790,22 +808,26 @@ function aiLoad(mode,fromSheet){
   try{AI.worker=new Worker("voice-worker.js",{type:"module"})}
   catch(e){aiFail("This browser can't run the AI voice.");return}
   AI.worker.onmessage=aiMsg;
-  AI.worker.onerror=()=>aiFail("The AI voice stopped working. Close Earshot, open it again and try once more.");
+  AI.worker.onerror=(ev)=>{aiLog("worker error: "+(ev&&ev.message||"unknown")+(ev&&ev.filename?" @ "+ev.filename.split("/").pop()+":"+ev.lineno:""));aiFail("The AI voice stopped working ("+(ev&&ev.message||"unknown error")+").")};
   const fast=mode==="fast"&&CAN_FAST;
   AI.worker.postMessage({type:"load",dtype:fast?"fp32":"q8",device:fast?"webgpu":"wasm"});
 }
 function aiFail(msg){
+  aiLog("FAILED: "+msg);$("#aiDiag").open=true;
   clearTimeout(AI.watch);AI.slow=false;
   AI.state="failed";AI.playWhenReady=false;if(AI.worker){AI.worker.terminate();AI.worker=null}
   const wasInstalling=!settings.aiInstalled;
   updateAIUI();updateStatus();
   const net=/fetch|network|load failed|offline|connection/i.test(msg);
-  toast(net?msg+" Check your internet connection and try again.":msg+" Tap Accents → Natural AI voice to try again, or tell the app's maker what this message says.",true);
+  toast(net?msg+" Check your internet connection and try again.":msg+" Open Technical details in the voice sheet to see what happened.",true);
+  if($("#aiSheet").hidden){$("#aiSheet").hidden=false;$("#aiScrim").hidden=false}
   if(playing)stop();
   AI.state="off";updateAIUI();
 }
 function aiMsg(e){
   const m=e.data;
+  if(m.type==="tick"){aiLastTick=performance.now();if(AI.quietNoted){AI.quietNoted=false;aiLog("(engine responding again)")}return}
+  if(m.type==="log"){aiLog(m.msg);return}
   if(m.type==="progress"){AI.loaded=m.loaded;AI.total=m.total;updateAIUI()}
   else if(m.type==="stage"){AI.stage=m.stage;updateAIUI();
     clearTimeout(AI.watch);AI.watch=setTimeout(()=>{if(AI.state==="loading"){AI.slow=true;updateAIUI()}},m.stage==="testing"?90000:120000)}
@@ -979,7 +1001,7 @@ function updateAIUI(){
       :AI.stage==="testing"?"Testing the voice…"
       :AI.stage==="starting"||(AI.total&&AI.loaded>=AI.total)?"Starting the voice engine… this can take a minute."
       :AI.total?`Downloading… ${mb(AI.loaded)} of ${mb(AI.total)} MB`:"Starting the download…";
-    $("#aiRetry").hidden=!AI.slow;
+    $("#aiRetry").hidden=!AI.slow;if(AI.slow)$("#aiDiag").open=true;
     $("#aiProgHint").textContent=AI.slow?"Tap Try again. The download is saved, so it won't start over.":"Keep Earshot open until it finishes.";
   }
   if(inst)$("#aiDoneText").textContent=`The AI voice is installed (${settings.aiMode==="fast"?"fast mode":"standard"}). Pick a voice under Natural AI voices in the Voice menu, or choose a narrator in Accents.`;
@@ -1003,12 +1025,17 @@ $("#engSys").addEventListener("click",()=>{
 $("#aiStd").addEventListener("click",()=>{settings.aiMode="standard";saveSettings();AI.fromSheet=true;aiLoad("standard",true)});
 $("#aiFast").addEventListener("click",()=>{settings.aiMode="fast";saveSettings();AI.fromSheet=true;aiLoad("fast",true)});
 $("#aiClose").addEventListener("click",closeAISheet);
+$("#aiCopy").addEventListener("click",()=>{
+  const t=AILOG.join("\n")||"(empty)";
+  navigator.clipboard.writeText(t).then(()=>toast("Copied. Paste it into your chat with Claude.")).catch(()=>{
+    const r=document.createRange();r.selectNodeContents($("#aiLog"));const sel=getSelection();sel.removeAllRanges();sel.addRange(r);toast("Selected. Tap Copy.")});
+});
 $("#aiRetry").addEventListener("click",()=>{
   if(AI.worker){AI.worker.terminate();AI.worker=null}
   settings.aiMode="standard";saveSettings();
   AI.fromSheet=true;aiLoad("standard",true);
 });
-$("#aiScrim").addEventListener("click",()=>{if(AI.state!=="loading"||AI.slow)closeAISheet()});
+$("#aiScrim").addEventListener("click",closeAISheet);
 $("#aiRemove").addEventListener("click",async e=>{
   const b=e.currentTarget;
   if(!b.classList.contains("arm")){b.classList.add("arm");b.textContent="Tap again to remove";setTimeout(()=>{b.classList.remove("arm");b.textContent="Remove download"},3000);return}

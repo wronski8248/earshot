@@ -2,6 +2,7 @@
 // The voice engine's pronunciation module reads compressed data with `for await (... of stream)`,
 // which Safari doesn't support yet. This adds that ability before the engine loads.
 if (typeof ReadableStream !== "undefined" && !ReadableStream.prototype[Symbol.asyncIterator]) {
+  self.__earshotPatched = true;
   ReadableStream.prototype[Symbol.asyncIterator] = async function* () {
     const reader = this.getReader();
     try {

@@ -2,6 +2,12 @@
 import "./safari-fixes.js"; // must load first
 import { KokoroTTS, env } from "./kokoro.web.js";
 
+const T0 = performance.now();
+const sec = () => ((performance.now() - T0) / 1000).toFixed(1) + "s";
+function log(msg) { self.postMessage({ type: "log", msg: sec() + "  " + msg }); }
+log("engine code loaded" + (self.__earshotPatched ? " (Safari patch applied)" : ""));
+let beat = setInterval(() => self.postMessage({ type: "tick" }), 2000);
+
 env.wasmPaths = new URL("./", self.location.href).href;
 const MODEL = "onnx-community/Kokoro-82M-v1.0-ONNX";
 
@@ -15,6 +21,9 @@ async function load({ dtype, device }) {
   const files = {};
   let announced = false;
   const progress_callback = (p) => {
+    if (p.status === "initiate") log("fetching " + p.file);
+    if (p.status === "done") log("got " + p.file);
+    if (p.status === "ready") log("model files ready");
     if (p.status === "done" && !announced) {
       const all = Object.values(files);
       if (all.length && all.every(f => f.loaded >= f.total)) { announced = true; post({ type: "stage", stage: "starting" }); }
@@ -27,6 +36,7 @@ async function load({ dtype, device }) {
     }
   };
   const t0 = performance.now();
+  log("starting: " + dtype + " on " + device + ", threads: " + (self.crossOriginIsolated ? "multi" : "single"));
   try {
     tts = await KokoroTTS.from_pretrained(MODEL, { dtype, device, progress_callback });
   } catch (e) {
@@ -37,8 +47,11 @@ async function load({ dtype, device }) {
     } else throw e;
   }
   // warm up so the first real sentence starts quickly
+  log("voice engine created");
   post({ type: "stage", stage: "testing" });
-  await tts.generate("Ready.", { voice: "bf_emma" });
+  log("test sentence: starting");
+  const w = await tts.generate("Ready.", { voice: "bf_emma" });
+  log("test sentence: done (" + (w.audio.length / w.sampling_rate).toFixed(1) + "s of audio)");
   post({ type: "ready", device, threads: self.crossOriginIsolated ? "multi" : "single", ms: Math.round(performance.now() - t0) });
 }
 
@@ -68,6 +81,9 @@ async function pump() {
   busy = false;
 }
 
+self.addEventListener("error", (e) => {
+  post({ type: "fail", message: String(e.message || e) });
+});
 self.addEventListener("unhandledrejection", (e) => {
   post({ type: "fail", message: String(e.reason && e.reason.message || e.reason) });
 });
@@ -75,7 +91,7 @@ self.addEventListener("unhandledrejection", (e) => {
 self.onmessage = async (e) => {
   const m = e.data;
   if (m.type === "load") {
-    try { await load(m); } catch (err) { post({ type: "fail", message: String(err && err.message || err) }); }
+    try { await load(m); } catch (err) { log("error: " + String(err && err.stack || err).slice(0, 300)); post({ type: "fail", message: String(err && err.message || err) }); }
   } else if (m.type === "gen") {
     queue.push(m); pump();
   } else if (m.type === "cancel") {
