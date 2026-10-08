@@ -1,0 +1,1028 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Read your EPUB and PDF books aloud.">
+<meta name="theme-color" content="#f4f6f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#13171d" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Earshot">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+img{max-width:100%}
+[hidden]{display:none!important}
+body{-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent}
+</style>
+<title>Earshot</title>
+<style>
+@font-face{font-family:"Literata";font-style:normal;font-weight:200 900;font-display:swap;src:url(literata.woff2) format("woff2")}
+@font-face{font-family:"Literata";font-style:italic;font-weight:200 900;font-display:swap;src:url(literata-italic.woff2) format("woff2")}
+@font-face{font-family:"Bricolage Grotesque";font-style:normal;font-weight:200 800;font-display:swap;src:url(bricolage.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:400;font-display:swap;src:url(plex-mono-400.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:500;font-display:swap;src:url(plex-mono-500.woff2) format("woff2")}
+</style>
+<style>
+/* Layout: library rail on the left, one reading column in the middle, a docked player across the bottom */
+:root{
+  --paper:#f4f6f3; --surface:#ffffff; --ink:#1c2430; --muted:#5b6571; --line:#dde1db;
+  --accent:#1d5d8a; --accent-ink:#ffffff; --mark:#fdf0a0; --mark-word:#ffd23f; --danger:#b3261e;
+  --f-read:"Literata",Georgia,"Times New Roman",serif;
+  --f-ui:"Bricolage Grotesque",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --size:20px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#13171d; --surface:#1a1f27; --ink:#e3e6e9; --muted:#9aa3ad; --line:#2a313b;
+  --accent:#7db4dc; --accent-ink:#0c1520; --mark:#3b3519; --mark-word:#75620f; --danger:#f2b8b5; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#13171d; --surface:#1a1f27; --ink:#e3e6e9; --muted:#9aa3ad; --line:#2a313b;
+  --accent:#7db4dc; --accent-ink:#0c1520; --mark:#3b3519; --mark-word:#75620f; --danger:#f2b8b5; color-scheme:dark}
+
+html{height:100%;box-sizing:border-box}
+*,*::before,*::after{box-sizing:border-box}
+body{height:100%;margin:0;background:var(--paper);color:var(--ink);font-family:var(--f-ui);font-size:14px;
+  display:grid;grid-template-columns:288px minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;overflow:hidden}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Library */
+#lib{grid-row:1;grid-column:1;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.brand{display:flex;align-items:center;gap:10px;padding:18px 18px 14px}
+.brand svg{flex:none}
+.brand b{font-size:19px;font-weight:700;letter-spacing:-.01em}
+.add{margin:0 14px 10px;display:flex;align-items:center;justify-content:center;gap:8px;padding:11px 12px;border-radius:10px;border:0;
+  background:var(--accent);color:var(--accent-ink);font-weight:600}
+.add:hover{filter:brightness(1.08)}
+.hint{margin:0 18px 12px;color:var(--muted);font-size:12.5px;line-height:1.45}
+.lab{margin:6px 18px 6px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600}
+#books{list-style:none;margin:0;padding:0 8px 16px;overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:2px}
+.bk{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;padding:10px;border-radius:9px;cursor:pointer;border:1px solid transparent}
+.bk:hover{background:color-mix(in srgb,var(--line) 45%,transparent)}
+.bk.on{background:color-mix(in srgb,var(--accent) 11%,transparent);border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
+.bk .t{font-weight:600;font-size:14px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.bk .a{grid-column:1;color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bk .meta{grid-column:1/-1;display:flex;align-items:center;gap:8px;margin-top:4px}
+.pill{font-family:var(--f-mono);font-size:10.5px;padding:1px 6px;border-radius:4px;border:1px solid var(--line);color:var(--muted)}
+.bar{flex:1;height:3px;border-radius:2px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent)}
+.pct{font-family:var(--f-mono);font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:3ch;text-align:right}
+.rm{grid-row:1;grid-column:2;border:0;background:none;color:var(--muted);font-size:12px;padding:2px 4px;border-radius:5px;opacity:0}
+.bk:hover .rm,.rm:focus-visible,.rm.arm{opacity:1}
+.rm.arm{color:var(--danger);font-weight:600}
+
+/* Reading area */
+main{grid-row:1;grid-column:2;overflow-y:auto;min-width:0;position:relative;scroll-behavior:smooth}
+.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;padding:10px 16px;
+  background:color-mix(in srgb,var(--paper) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.top .ttl{flex:1;min-width:0}
+.top .ttl b{display:block;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top .ttl span{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ib{border:1px solid var(--line);background:var(--surface);border-radius:8px;height:32px;min-width:32px;padding:0 9px;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.ib:hover{border-color:color-mix(in srgb,var(--accent) 50%,var(--line))}
+#menuBtn{display:none}
+.col{max-width:40rem;margin:0 auto;padding:28px 20px 120px}
+.note{font-size:13px;line-height:1.5;color:var(--muted);border:1px dashed var(--line);border-radius:10px;padding:10px 14px;margin-bottom:26px}
+.note b{color:var(--ink)}
+#text{font-family:var(--f-read);font-size:var(--size);line-height:1.72;font-optical-sizing:auto}
+#text p{margin:0 0 1em}
+#text h2{font-size:1.25em;line-height:1.3;font-weight:600;margin:1.8em 0 .8em;text-wrap:balance}
+#text h2:first-child{margin-top:0}
+.s{border-radius:3px;cursor:pointer;-webkit-box-decoration-break:clone;box-decoration-break:clone;transition:background-color .15s}
+.s:hover{background:color-mix(in srgb,var(--mark) 55%,transparent)}
+.s.cur{background:var(--mark)}
+.s mark{background:var(--mark-word);color:inherit;border-radius:2px}
+.pg{font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:10px;margin:2.2em 0 1.2em}
+.pg::after{content:"";flex:1;border-top:1px solid var(--line)}
+#follow{position:sticky;bottom:16px;margin:0 auto;display:flex;align-items:center;gap:6px;border:0;border-radius:999px;padding:8px 14px;
+  background:var(--ink);color:var(--paper);font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.18)}
+
+/* Player */
+#player{grid-row:2;grid-column:1/-1;background:var(--surface);border-top:1px solid var(--line);padding:0 16px 12px}
+#prog{display:block;width:100%;margin:0;height:18px;accent-color:var(--accent);cursor:pointer}
+.prow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:16px}
+.now{min-width:0}
+.now b{display:block;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#status{font-family:var(--f-mono);font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tp{display:flex;align-items:center;gap:10px}
+.tb{border:0;background:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--ink)}
+.tb:hover{background:color-mix(in srgb,var(--line) 60%,transparent)}
+#play{width:54px;height:54px;background:var(--accent);color:var(--accent-ink)}
+#play:hover{background:var(--accent);filter:brightness(1.08)}
+#play:disabled{opacity:.5;cursor:not-allowed}
+.opts{display:flex;align-items:center;justify-content:flex-end;gap:14px;min-width:0}
+.spd{display:flex;align-items:center;gap:8px}
+.spd label,.vc label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+#rate{width:110px;accent-color:var(--accent)}
+#rateVal{font-family:var(--f-mono);font-size:13px;font-weight:500;min-width:4.2ch;font-variant-numeric:tabular-nums}
+.vc{display:flex;align-items:center;gap:8px;min-width:0}
+#voice{max-width:220px;min-width:0;height:32px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:0 8px}
+
+/* Accents panel */
+#accBtn[aria-expanded="true"]{border-color:var(--accent);color:var(--accent)}
+#acc{position:fixed;right:16px;bottom:110px;width:min(440px,calc(100% - 32px));max-height:min(72vh,600px);overflow-y:auto;z-index:40;
+  background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:0 14px 44px rgba(0,0,0,.24);padding:16px}
+.ah{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px}
+.ah div{flex:1}
+.ah h3{margin:0;font-family:var(--f-read);font-size:19px;font-weight:600;font-style:italic;letter-spacing:-.01em}
+.ah p{margin:3px 0 0;color:var(--muted);font-size:12.5px;line-height:1.45}
+#presets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.ps{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px;text-align:left;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--paper)}
+.ps:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--line))}
+.ps.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--paper))}
+.ps.none{opacity:.55}
+.ps svg{grid-row:1/4;margin-top:1px}
+.ps b{font-size:13.5px;line-height:1.25}
+.ps .d{font-size:12px;color:var(--muted);line-height:1.35}
+.ps .v{font-family:var(--f-mono);font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+.ps.on .v{color:var(--accent)}
+.prow2{display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.prow2 label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+#pitch{flex:1;accent-color:var(--accent)}
+#pitchVal{font-family:var(--f-mono);font-size:12.5px;min-width:9ch;text-align:right;font-variant-numeric:tabular-nums}
+.tip{margin:12px 0 0;font-size:12px;line-height:1.5;color:var(--muted)}
+.tip b{color:var(--ink)}
+@media (max-width:520px){#presets{grid-template-columns:minmax(0,1fr)}#acc{right:16px;left:16px;width:auto}}
+
+/* Voice type switch */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:11px;background:var(--paper);border:1px solid var(--line);margin-bottom:10px}
+.seg button{border:0;background:none;border-radius:8px;padding:8px 6px;font-weight:600;font-size:13px;color:var(--muted)}
+.seg button[aria-checked="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.engnote{margin:0 0 12px;font-size:12.5px;line-height:1.45;color:var(--muted)}
+#play.wait{position:relative}
+#play.wait::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid var(--accent);border-right-color:transparent;animation:sp 1s linear infinite}
+
+/* AI voice sheet */
+#aiScrim{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.4)}
+#aiSheet{position:fixed;z-index:71;left:50%;top:50%;transform:translate(-50%,-50%);width:min(460px,calc(100% - 32px));max-height:calc(100% - 48px);overflow-y:auto;
+  background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:20px;display:flex;flex-direction:column;gap:12px}
+#aiSheet h3{margin:0;font-family:var(--f-read);font-size:22px;font-weight:600;letter-spacing:-.01em}
+#aiSheet p{margin:0;font-size:13.5px;line-height:1.5}
+#aiSheet ul{margin:0;padding-left:18px;font-size:13px;line-height:1.5;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+#aiSheet .add{margin:0}
+#aiSheet .ib{height:auto;min-height:40px;padding:8px 14px;font-weight:600}
+.hint2{font-size:12px!important;color:var(--muted)}
+.bar.big{height:8px;border-radius:4px;flex:none}
+#aiProgText{font-family:var(--f-mono);font-size:12.5px!important;color:var(--muted);font-variant-numeric:tabular-nums}
+.sheetbtns{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between}
+
+/* Overlays */
+#toast{position:fixed;left:50%;top:calc(16px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:50;max-width:min(520px,calc(100% - 32px));
+  background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:10px;font-size:13.5px;line-height:1.45;box-shadow:0 6px 24px rgba(0,0,0,.2);display:flex;gap:10px;align-items:center}
+#toast.err{background:var(--danger);color:var(--surface)}
+.spin{width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .8s linear infinite;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+#drop{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 18%,transparent);backdrop-filter:blur(2px);pointer-events:none}
+#drop div{background:var(--surface);border:2px dashed var(--accent);border-radius:16px;padding:28px 36px;font-size:17px;font-weight:600}
+#scrim{position:fixed;inset:0;z-index:25;background:rgba(0,0,0,.35)}
+
+@media (max-width:820px){
+  body{grid-template-columns:minmax(0,1fr)}
+  #lib{position:fixed;top:0;bottom:0;left:0;width:min(320px,86vw);z-index:30;transform:translateX(-105%);transition:transform .25s ease;
+    padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-shadow:4px 0 24px rgba(0,0,0,.15)}
+  #lib.open{transform:none}
+  main{grid-column:1}
+  #menuBtn{display:inline-flex}
+  .rm{opacity:1}
+  .prow{grid-template-columns:minmax(0,1fr) auto;gap:8px 12px}
+  .opts{grid-column:1/-1;justify-content:space-between;flex-wrap:wrap}
+  .tp{gap:4px}
+  #voice{max-width:170px}
+  #rate{width:90px}
+}
+@media (prefers-reduced-motion: reduce){main{scroll-behavior:auto}*{transition:none!important;animation-duration:.01ms!important}}
+</style>
+</head>
+<body>
+
+<aside id="lib" aria-label="Library">
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M3 5.5c3.5-1.4 6.7-1.2 10 .8v15c-3.3-2-6.5-2.2-10-.8z" fill="var(--accent)"/><path d="M13 6.3c3.3-2 6.5-2.2 10-.8v15c-3.5-1.4-6.7-1.2-10 .8z" fill="none" stroke="var(--accent)" stroke-width="1.6"/><path d="M16.5 10.5a3.5 3.5 0 0 1 0 5M18.8 8.6a6.3 6.3 0 0 1 0 8.8" fill="none" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round"/></svg>
+    <b>Earshot</b>
+  </div>
+  <button class="add" id="addBtn" type="button">
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    Add EPUB or PDF
+  </button>
+  <p class="hint">Or drop files anywhere on this page. Books stay in this browser on this device; nothing is uploaded.</p>
+  <div class="lab">Your books</div>
+  <ul id="books"></ul>
+  <input type="file" id="file" accept=".epub,.pdf,.txt,application/epub+zip,application/pdf,text/plain" multiple hidden>
+</aside>
+<div id="scrim" hidden></div>
+
+<main id="main">
+  <div class="top">
+    <button class="ib" id="menuBtn" type="button" aria-label="Open library">
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+    </button>
+    <div class="ttl"><b id="bTitle">Pride and Prejudice</b><span id="bAuthor">Jane Austen</span></div>
+    <button class="ib" id="smaller" type="button" aria-label="Smaller text"><span style="font-size:12px;font-weight:600">A</span></button>
+    <button class="ib" id="bigger" type="button" aria-label="Larger text"><span style="font-size:17px;font-weight:600">A</span></button>
+  </div>
+  <div class="col">
+    <div class="note" id="sampleNote"><b>This is a sample chapter.</b> Press play to hear it, or tap any sentence to start there. Add your own EPUB or PDF from the library.</div>
+    <article id="text"></article>
+  </div>
+  <button id="follow" type="button" hidden>
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 2v10M3 8l4 4 4-4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Back to where it's reading
+  </button>
+</main>
+
+<div id="player">
+  <input type="range" id="prog" min="0" max="0" value="0" step="1" aria-label="Position in book">
+  <div class="prow">
+    <div class="now"><b id="pTitle">Pride and Prejudice</b><div id="status">0% · —</div></div>
+    <div class="tp">
+      <button class="tb" id="prev" type="button" aria-label="Previous sentence" title="Previous sentence (←)">
+        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 4v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M16 4.5v11L8 10z" fill="currentColor"/></svg>
+      </button>
+      <button class="tb" id="play" type="button" aria-label="Play" title="Play / pause (Space)">
+        <svg id="icPlay" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><path d="M7 4.5v13l11-6.5z" fill="currentColor"/></svg>
+        <svg id="icPause" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true" hidden><rect x="5.5" y="4.5" width="4" height="13" rx="1" fill="currentColor"/><rect x="12.5" y="4.5" width="4" height="13" rx="1" fill="currentColor"/></svg>
+      </button>
+      <button class="tb" id="next" type="button" aria-label="Next sentence" title="Next sentence (→)">
+        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M15 4v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 4.5v11l8-5.5z" fill="currentColor"/></svg>
+      </button>
+    </div>
+    <div class="opts">
+      <div class="spd"><label for="rate">Speed</label><input type="range" id="rate" min="0.5" max="3" step="0.05" value="1"><span id="rateVal">1.00×</span></div>
+      <div class="vc"><label for="voice">Voice</label><select id="voice"><option>Loading voices…</option></select></div>
+      <button class="ib" id="accBtn" type="button" aria-expanded="false" aria-controls="acc">
+        <svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><path d="M7 1 1.5 3v4.5C1.5 11 4 13.6 7 15c3-1.4 5.5-4 5.5-7.5V3z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        Accents
+      </button>
+    </div>
+  </div>
+</div>
+
+<section id="acc" hidden aria-label="Westeros accents">
+  <div class="seg" role="radiogroup" aria-label="Voice type">
+    <button type="button" role="radio" id="engSys" aria-checked="true">Apple voices</button>
+    <button type="button" role="radio" id="engAI" aria-checked="false">Natural AI voice</button>
+  </div>
+  <p class="engnote" id="engNote"></p>
+  <div class="ah">
+    <div><h3>Westeros accents</h3><p id="accIntro">Pick a narrator. Each one uses a British, Scottish or Irish voice from your device, set deeper or slower to fit the part.</p></div>
+    <button class="ib" id="accClose" type="button" aria-label="Close accents">
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <div id="presets"></div>
+  <div class="prow2" id="depthRow"><label for="pitch">Depth</label><input type="range" id="pitch" min="0.5" max="1.5" step="0.05" value="1"><span id="pitchVal">normal</span></div>
+  <p class="tip" id="sysTip"><b>Only a few accents showing?</b> Your browser can use only the voices installed on your device. In Microsoft Edge, the free “Natural” voices Ryan, Thomas, Sonia and Libby (UK) and Connor and Emily (Ireland) sound the most lifelike. On an iPhone or Mac, go to Settings → Accessibility → Spoken Content → Voices → English and download the UK, Ireland and Scotland voices, then reload this page.</p>
+</section>
+
+<div id="aiScrim" hidden></div>
+<section id="aiSheet" hidden role="dialog" aria-modal="true" aria-labelledby="aiTitle">
+  <h3 id="aiTitle">Natural AI voice</h3>
+  <p>Kokoro is an open-source AI voice that runs on your phone. It sounds more natural than the built-in voices, and it keeps reading when your screen is off.</p>
+  <ul>
+    <li>One-time download. After that it works offline.</li>
+    <li>It prepares audio ahead of where you're listening. Wait until a few minutes are ready before you lock your phone.</li>
+    <li>It uses more battery while it prepares audio.</li>
+  </ul>
+  <div id="aiChoices" style="display:flex;flex-direction:column;gap:8px">
+    <button class="add" id="aiStd" type="button">Download the AI voice · 92 MB</button>
+    <button class="ib" id="aiFast" type="button" hidden>Download fast mode · 326 MB</button>
+    <p class="hint2" id="aiFastNote" hidden>Fast mode uses your phone's graphics chip, so it prepares audio several times faster, but it's a bigger download. It needs iOS 26 or newer. If it doesn't start on your phone, Earshot switches to the standard download.</p>
+  </div>
+  <div id="aiProg" hidden style="display:flex;flex-direction:column;gap:8px">
+    <span class="bar big"><i id="aiBar" style="width:0%"></i></span>
+    <p id="aiProgText">Starting the download…</p>
+    <p class="hint2">Keep Earshot open until it finishes.</p>
+  </div>
+  <div id="aiDone" hidden style="display:flex;flex-direction:column;gap:8px">
+    <p id="aiDoneText">The AI voice is ready.</p>
+  </div>
+  <div class="sheetbtns">
+    <button class="ib" id="aiRemove" type="button" hidden>Remove download</button>
+    <button class="ib" id="aiClose" type="button">Close</button>
+  </div>
+</section>
+<div id="toast" hidden role="status" aria-live="polite"></div>
+<div id="drop" hidden><div>Drop EPUB or PDF files to add them</div></div>
+
+<script src="jszip.min.js"></script>
+<script src="pdf.min.js"></script>
+<script>
+(function(){
+"use strict";
+const $=s=>document.querySelector(s);
+const synth=window.speechSynthesis||null;
+if(window.pdfjsLib){try{pdfjsLib.GlobalWorkerOptions.workerSrc="pdf.worker.min.js"}catch(e){}}
+
+/* ---------- settings ---------- */
+const settings=Object.assign({rate:1,voice:"",size:20,last:"",pitch:1,preset:"",aiInstalled:false,aiMode:"standard",lastAI:"bf_emma",lastSys:""},(()=>{try{return JSON.parse(localStorage.getItem("earshot-settings")||"{}")}catch(e){return {}}})());
+function saveSettings(){try{localStorage.setItem("earshot-settings",JSON.stringify(settings))}catch(e){}}
+
+/* ---------- storage (IndexedDB, per browser) ---------- */
+const DB={db:null,
+  async open(){try{this.db=await new Promise((res,rej)=>{const r=indexedDB.open("earshot",1);r.onupgradeneeded=()=>r.result.createObjectStore("books",{keyPath:"id"});r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}catch(e){this.db=null}},
+  store(m){return this.db.transaction("books",m).objectStore("books")},
+  all(){return new Promise(res=>{if(!this.db)return res([]);try{const r=this.store("readonly").getAll();r.onsuccess=()=>res(r.result||[]);r.onerror=()=>res([])}catch(e){res([])}})},
+  put(b){if(!this.db||b.sample)return;try{this.store("readwrite").put(b)}catch(e){}},
+  del(id){if(!this.db)return;try{this.store("readwrite").delete(id)}catch(e){}}
+};
+
+/* ---------- sample ---------- */
+const SAMPLE={id:"sample",sample:true,title:"Pride and Prejudice",author:"Jane Austen",type:"Sample",pos:0,blocks:[
+ {t:"h",x:"Chapter 1"},
+ {t:"p",x:"It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife."},
+ {t:"p",x:"However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families, that he is considered the rightful property of some one or other of their daughters."},
+ {t:"p",x:"“My dear Mr. Bennet,” said his lady to him one day, “have you heard that Netherfield Park is let at last?”"},
+ {t:"p",x:"Mr. Bennet replied that he had not."},
+ {t:"p",x:"“But it is,” returned she; “for Mrs. Long has just been here, and she told me all about it.”"},
+ {t:"p",x:"Mr. Bennet made no answer."},
+ {t:"p",x:"“Do you not want to know who has taken it?” cried his wife impatiently."},
+ {t:"p",x:"“You want to tell me, and I have no objection to hearing it.”"},
+ {t:"p",x:"This was invitation enough."},
+ {t:"p",x:"“Why, my dear, you must know, Mrs. Long says that Netherfield is taken by a young man of large fortune from the north of England; that he came down on Monday in a chaise and four to see the place, and was so much delighted with it, that he agreed with Mr. Morris immediately; that he is to take possession before Michaelmas, and some of his servants are to be in the house by the end of next week.”"},
+ {t:"p",x:"“What is his name?”"},
+ {t:"p",x:"“Bingley.”"},
+ {t:"p",x:"“Is he married or single?”"},
+ {t:"p",x:"“Oh! Single, my dear, to be sure! A single man of large fortune; four or five thousand a year. What a fine thing for our girls!”"},
+ {t:"p",x:"“How so? How can it affect them?”"},
+ {t:"p",x:"“My dear Mr. Bennet,” replied his wife, “how can you be so tiresome! You must know that I am thinking of his marrying one of them.”"},
+ {t:"p",x:"“Is that his design in settling here?”"},
+ {t:"p",x:"“Design! Nonsense, how can you talk so! But it is very likely that he may fall in love with one of them, and therefore you must visit him as soon as he comes.”"}
+]};
+
+/* ---------- state ---------- */
+let books=[],cur=null,sents=[],wordsBefore=[],totalWords=0,idx=0,playing=false,token=0,utt=null,follow=true,voices=[],saveTimer=0;
+
+/* ---------- text helpers ---------- */
+const norm=s=>(s||"").replace(/\s+/g," ").trim();
+const esc=s=>s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const segmenter=(window.Intl&&Intl.Segmenter)?new Intl.Segmenter(undefined,{granularity:"sentence"}):null;
+const ABBR=/(?:\b(?:Mr|Mrs|Ms|Dr|St|Jr|Sr|Prof|Rev|Gen|Col|Capt|Lt|vs|etc|No|Vol|pp|Fig|Inc|Ltd|Co|Mt|e\.g|i\.e)|\b[A-Z])\.\s*$/;
+function splitSentences(t){
+  let parts=segmenter?[...segmenter.segment(t)].map(x=>x.segment):(t.match(/[^.!?…]+[.!?…]+["'”’)\]]*\s*|[^.!?…]+$/g)||[t]);
+  const out=[];
+  for(const p of parts){ if(out.length&&ABBR.test(out[out.length-1])) out[out.length-1]+=p; else out.push(p); }
+  return out.filter(s=>s.trim());
+}
+function chunk(s){
+  if(s.length<=260)return [s];
+  const bits=s.split(/(?<=[;:,—–])\s+/);const out=[];let acc="";
+  for(const b of bits){ if(acc&&(acc+" "+b).length>220){out.push(acc+" ");acc=b}else acc=acc?acc+" "+b:b; }
+  if(acc)out.push(acc);
+  return out.flatMap(c=>c.length>400?c.match(/.{1,300}(\s|$)/g):[c]);
+}
+
+/* ---------- rendering ---------- */
+function render(book){
+  const art=$("#text");art.textContent="";sents=[];wordsBefore=[];totalWords=0;
+  const frag=document.createDocumentFragment();
+  for(const b of book.blocks){
+    if(b.t==="pg"){const d=document.createElement("div");d.className="pg";d.textContent=b.x;frag.appendChild(d);continue}
+    const el=document.createElement(b.t==="h"?"h2":"p");
+    for(const s of splitSentences(b.x)) for(const c of chunk(s)){
+      const sp=document.createElement("span");sp.className="s";sp.dataset.i=sents.length;sp.textContent=c;
+      const w=(c.match(/\S+/g)||[]).length;wordsBefore.push(totalWords);totalWords+=w;
+      sents.push({text:c,el:sp});el.appendChild(sp);el.appendChild(document.createTextNode(""));
+    }
+    frag.appendChild(el);
+  }
+  art.appendChild(frag);
+  $("#prog").max=Math.max(0,sents.length-1);
+}
+
+function setIdx(i,scroll){
+  if(!sents.length)return;
+  i=Math.max(0,Math.min(sents.length-1,i));
+  if(sents[idx]){sents[idx].el.classList.remove("cur");sents[idx].el.textContent=sents[idx].text}
+  idx=i;const s=sents[idx];s.el.classList.add("cur");
+  if(scroll!==false&&follow) s.el.scrollIntoView({block:"center",behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"});
+  $("#prog").value=idx;updateStatus();
+  if(cur){cur.pos=idx;clearTimeout(saveTimer);saveTimer=setTimeout(()=>{DB.put(cur);renderLibrary()},900)}
+}
+function fmtTime(min){if(!isFinite(min))return "—";if(min<1)return "under a minute";const h=Math.floor(min/60),m=Math.round(min%60);return h?`${h}h ${m}m`:`${m} min`}
+function updateStatus(){
+  if(!sents.length){$("#status").textContent="No text";return}
+  const pct=Math.round(wordsBefore[idx]/Math.max(1,totalWords)*100);
+  const left=(totalWords-wordsBefore[idx])/(165*settings.rate);
+  if(isAI()){
+    if(playing&&AI.waiting){$("#status").textContent=`${pct}% · preparing the voice…`;return}
+    if(AI.state==="loading"){$("#status").textContent=`${pct}% · starting the AI voice…`;return}
+    const ah=aiAhead();
+    if(AI.started&&AI.state==="ready"){$("#status").textContent=`${pct}% · ${ah<60?"under a minute":fmtTime(ah/60/settings.rate)} ready ahead`;return}
+  }
+  $("#status").textContent=`${pct}% · ${fmtTime(left)} left at ${settings.rate.toFixed(2)}×`;
+}
+
+/* ---------- speech ---------- */
+function pickVoice(){return voices.find(v=>v.voiceURI===settings.voice)||null}
+function speakCurrent(){
+  const my=++token;const s=sents[idx];if(!s){stop();return}
+  setIdx(idx);
+  const u=new SpeechSynthesisUtterance(s.text);utt=u;
+  const v=pickVoice();if(v){u.voice=v;u.lang=v.lang}
+  u.rate=settings.rate;u.pitch=settings.pitch;
+  u.onboundary=e=>{
+    if(my!==token||(e.name&&e.name!=="word"))return;
+    const t=s.text,st=e.charIndex;let len=e.charLength;
+    if(!len){const m=t.slice(st).match(/^\S+/);len=m?m[0].length:0}
+    if(len)s.el.innerHTML=esc(t.slice(0,st))+"<mark>"+esc(t.slice(st,st+len))+"</mark>"+esc(t.slice(st+len));
+  };
+  u.onend=()=>{if(my!==token)return;s.el.textContent=s.text;
+    if(idx<sents.length-1){idx++;speakCurrent()}else{stop();toast("Finished reading.")}};
+  u.onerror=e=>{if(my!==token)return;if(e.error==="interrupted"||e.error==="canceled")return;
+    s.el.textContent=s.text;stop();toast("The voice stopped unexpectedly ("+e.error+"). Try another voice from the Voice menu.",true)};
+  synth.speak(u);
+}
+function play(){
+  if(!sents.length)return;
+  if(isAI()){
+    if(AI.state!=="ready"){
+      if(!settings.aiInstalled){aiEnsure(true);return}
+      playing=true;AI.waiting=true;AI.waitIdx=idx;updatePlayBtn();updateStatus();aiEnsure(true);return;
+    }
+    playing=true;follow=true;$("#follow").hidden=true;updatePlayBtn();keepAwake(true);
+    if(synth)synth.cancel();
+    const e=AI.seg&&AI.seg.list.find(x=>x.i===idx);
+    if(e&&AI.el.src&&!AI.el.ended&&AI.el.currentTime>=e.t0&&AI.el.currentTime<e.t1+.5){AI.el.play().catch(aiPlayBlocked)}
+    else aiPlayFrom(idx,0);
+    setMediaSession();return;
+  }
+  if(!synth){toast("This browser can't use the built-in voices. Switch to the natural AI voice in Accents.",true);return}
+  playing=true;follow=true;$("#follow").hidden=true;updatePlayBtn();keepAwake(true);
+  token++;synth.cancel();
+  setTimeout(()=>{if(playing)speakCurrent()},60);
+}
+function stop(){playing=false;keepAwake(false);token++;if(synth)synth.cancel();AI.playWhenReady=false;aiHalt();if(sents[idx])sents[idx].el.textContent=sents[idx].text;updatePlayBtn()}
+function speakFrom(i){setIdx(i);play()}
+function updatePlayBtn(){$("#play").classList.toggle("wait",playing&&isAI()&&AI.waiting);if("mediaSession" in navigator)try{navigator.mediaSession.playbackState=playing?"playing":"paused"}catch(e){}$("#icPlay").hidden=playing;$("#icPause").hidden=!playing;$("#play").setAttribute("aria-label",playing?"Pause":"Play")}
+
+function loadVoices(){
+  const sel=$("#voice");
+  voices=synth?synth.getVoices():[];
+  const lang=(navigator.language||"en").slice(0,2).toLowerCase();
+  const score=v=>(/natural|neural|premium|enhanced|online/i.test(v.name)?4:0)+(/google|siri|samantha|aria|jenny|guy/i.test(v.name)?2:0)+(v.lang.toLowerCase().startsWith(lang)?10:0)+(v.default?1:0);
+  if(!isAI()&&!pickVoice()){const best=[...voices].sort((a,b)=>score(b)-score(a))[0];settings.voice=best?best.voiceURI:""}
+  let dn=null;try{dn=new Intl.DisplayNames([navigator.language||"en"],{type:"language"})}catch(e){try{dn=new Intl.DisplayNames(["en"],{type:"language"})}catch(e2){}}
+  const groups={};
+  for(const v of voices){const k=v.lang.slice(0,2).toLowerCase();(groups[k]=groups[k]||[]).push(v)}
+  const keys=Object.keys(groups).sort((a,b)=>(b===lang)-(a===lang)||a.localeCompare(b));
+  sel.textContent="";
+  const ag=document.createElement("optgroup");ag.label="Natural AI voices (keep reading with the screen off)";
+  for(const [id,name,g,acc] of AI_VOICES){
+    const o=document.createElement("option");o.value="ai:"+id;o.textContent=name+" · "+(acc==="gb"?"British":"American")+" AI"+(settings.aiInstalled?"":" (download)");
+    if(settings.voice===o.value)o.selected=true;ag.appendChild(o);
+  }
+  sel.appendChild(ag);
+  for(const k of keys){
+    const og=document.createElement("optgroup");let name=k;try{name=dn?dn.of(k):k}catch(e){}og.label=name;
+    for(const v of groups[k].sort((a,b)=>score(b)-score(a)||a.name.localeCompare(b.name))){
+      const o=document.createElement("option");o.value=v.voiceURI;o.textContent=v.name.replace(/^Microsoft\s+/,"").replace(/\s+Online\s+\(Natural\)/," (Natural)")+(v.lang.length>2?" · "+v.lang:"");
+      if(v.voiceURI===settings.voice)o.selected=true;og.appendChild(o);
+    }
+    sel.appendChild(og);
+  }
+  if(!voices.length&&!isAI()){const o=document.createElement("option");o.disabled=true;o.textContent=synth?"Loading built-in voices…":"No built-in voices in this browser";sel.appendChild(o);o.selected=true}
+  renderPresets();syncEngineUI();
+}
+
+/* ---------- Westeros accent presets ---------- */
+const PRESETS=[
+  {id:"lord",ai:"bm_george",name:"Northern Lord",desc:"Low, steady and stern, built for cold stone halls.",acc:["sct","gb"],g:"m",pitch:.75,rate:.92,c:"#5b6f80"},
+  {id:"lady",ai:"bf_emma",name:"Highborn Lady",desc:"Crisp court English, measured and cool.",acc:["gb"],g:"f",pitch:1.05,rate:.95,c:"#8a5a9e"},
+  {id:"maester",ai:"bm_lewis",name:"Grand Maester",desc:"Slow and learned, as if reading an old scroll.",acc:["gb"],g:"m",pitch:.9,rate:.85,c:"#7d7354"},
+  {id:"wall",ai:"bm_daniel",name:"Beyond the Wall",desc:"A Scottish or Irish lilt, rough and plain-spoken.",acc:["sct","ie"],g:"any",pitch:.85,rate:1,c:"#4f7d73"},
+  {id:"story",ai:"bf_isabella",name:"Fireside Storyteller",desc:"An old voice by the hearth, slow and low.",acc:["ie","sct","gb"],g:"f",pitch:.8,rate:.82,c:"#a0603a"},
+  {id:"herald",ai:"bm_fable",name:"Herald of the Realm",desc:"A deep proclamation voice for battles and decrees.",acc:["gb"],g:"m",pitch:.62,rate:.9,c:"#9b3b3b"}
+];
+const PREVIEW="The night is long, and the road to the north is longer still.";
+function accentOf(v){const l=v.lang.toLowerCase(),n=v.name.toLowerCase();
+  if(/sct|scot/.test(l)||/fiona|scottish|scotland|alba/.test(n))return "sct";
+  if(/^en[-_]ie/.test(l)||/moira|irish|ireland/.test(n))return "ie";
+  if(/^en[-_]gb/.test(l)||/uk english|british|united kingdom/.test(n))return "gb";
+  return null}
+function genderOf(v){const n=v.name.toLowerCase();
+  if(/female|(^|[^a-z])[ab]f_/.test(n))return "f";
+  if(/(^|[^a-z])male\b|(^|[^a-z])[ab]m_/.test(n))return "m";
+  if(/daniel|arthur|oliver|george|ryan|thomas|alfie|elliot|ethan|noah|connor|harry|james|jamie|reed|rocko|grandpa|eddy|lewis/.test(n))return "m";
+  if(/serena|kate|martha|stephanie|fiona|moira|sonia|libby|maisie|hazel|susan|emily|bella|hollie|abbi|olivia|mia|sandy|shelley|grandma|flo|amy|isla/.test(n))return "f";
+  return null}
+function matchVoice(p){
+  let best=null,bs=-1;
+  for(const v of voices){
+    const a=accentOf(v);const ai=p.acc.indexOf(a);if(ai<0)continue;
+    const g=genderOf(v);
+    let s=100-ai*20+(p.g==="any"?20:g===p.g?30:g===null?8:-40)+(/natural|neural|premium|enhanced|online/i.test(v.name)?15:0);
+    if(s>bs){bs=s;best=v}
+  }
+  return best}
+const shield=c=>`<svg width="26" height="30" viewBox="0 0 26 30" aria-hidden="true"><path d="M13 1.5 2.5 5v8.5C2.5 20.5 7 25.6 13 28.5c6-2.9 10.5-8 10.5-15V5z" fill="${c}" stroke="var(--ink)" stroke-opacity=".25"/></svg>`;
+function renderPresets(){
+  const box=$("#presets");if(!box)return;box.textContent="";
+  for(const p of PRESETS){
+    const v=isAI()?null:matchVoice(p);const aiName=(AI_VOICES.find(x=>x[0]===p.ai)||[])[1];
+    const b=document.createElement("button");b.type="button";b.className="ps"+(settings.preset===p.id?" on":"")+(v||isAI()?"":" none");b.dataset.id=p.id;
+    b.innerHTML=shield(p.c)+"<b></b><span class='d'></span><span class='v'></span>";
+    b.querySelector("b").textContent=p.name;b.querySelector(".d").textContent=p.desc;
+    b.querySelector(".v").textContent=isAI()?aiName+" · British AI voice":v?v.name.replace(/^Microsoft\s+/,"").replace(/\s+Online\s+\(Natural\).*$/," (Natural)").replace(/\s+-\s+English.*$/,""):"Needs a UK, Irish or Scottish voice";
+    box.appendChild(b);
+  }
+}
+function syncPitch(){const p=$("#pitch");p.value=settings.pitch;
+  $("#pitchVal").textContent=Math.abs(settings.pitch-1)<.01?"normal":settings.pitch<1?"deeper "+settings.pitch.toFixed(2):"higher "+settings.pitch.toFixed(2)}
+function preview(){
+  if(!synth)return;token++;synth.cancel();if(sents[idx])sents[idx].el.textContent=sents[idx].text;
+  const u=new SpeechSynthesisUtterance(PREVIEW);const v=pickVoice();if(v){u.voice=v;u.lang=v.lang}
+  u.rate=settings.rate;u.pitch=settings.pitch;utt=u;setTimeout(()=>synth.speak(u),60);
+}
+function applyPreset(id){
+  const p=PRESETS.find(x=>x.id===id);
+  if(p&&isAI()){
+    const was=playing;if(was)stop();
+    settings.voice="ai:"+p.ai;settings.lastAI=p.ai;settings.rate=p.rate;settings.preset=p.id;saveSettings();
+    $("#voice").value=settings.voice;$("#rate").value=p.rate;$("#rateVal").textContent=p.rate.toFixed(2)+"×";
+    aiVoiceChanged();renderPresets();updateStatus();
+    if(was)play();else aiPreview();
+    return;
+  }
+  const v=p&&matchVoice(p);
+  if(!v){toast("This device has no UK, Irish or Scottish voice installed yet. The tip at the bottom of the panel shows how to add them.",true);return}
+  settings.voice=v.voiceURI;settings.pitch=p.pitch;settings.rate=p.rate;settings.preset=p.id;saveSettings();
+  $("#voice").value=v.voiceURI;$("#rate").value=p.rate;$("#rateVal").textContent=p.rate.toFixed(2)+"×";syncPitch();
+  renderPresets();updateStatus();
+  if(playing)speakFrom(idx);else preview();
+}
+
+/* ---------- library ---------- */
+function renderLibrary(){
+  const ul=$("#books");ul.textContent="";
+  for(const b of [...books,SAMPLE]){
+    const li=document.createElement("li");li.className="bk"+(cur&&cur.id===b.id?" on":"");li.tabIndex=0;li.dataset.id=b.id;
+    const n=b.count||0;const pct=n>1?Math.round((b.pos||0)/(n-1)*100):0;
+    li.innerHTML=`<div class="t"></div><div class="a"></div><div class="meta"><span class="pill"></span><span class="bar"><i style="width:${pct}%"></i></span><span class="pct">${pct}%</span></div>`;
+    li.querySelector(".t").textContent=b.title;li.querySelector(".a").textContent=b.author||"Unknown author";li.querySelector(".pill").textContent=b.type;
+    if(!b.sample){const rm=document.createElement("button");rm.type="button";rm.className="rm";rm.textContent="Remove";rm.setAttribute("aria-label","Remove "+b.title);li.appendChild(rm)}
+    ul.appendChild(li);
+  }
+}
+$("#books").addEventListener("click",e=>{
+  const li=e.target.closest(".bk");if(!li)return;const id=li.dataset.id;
+  const rm=e.target.closest(".rm");
+  if(rm){
+    if(!rm.classList.contains("arm")){rm.classList.add("arm");rm.textContent="Confirm";setTimeout(()=>{rm.classList.remove("arm");rm.textContent="Remove"},3000);return}
+    books=books.filter(b=>b.id!==id);DB.del(id);
+    if(cur&&cur.id===id){stop();openBook(books[0]?books[0].id:"sample")}else renderLibrary();
+    toast("Removed from your library.");return;
+  }
+  openBook(id);closeDrawer();
+});
+$("#books").addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.classList.contains("bk")){openBook(e.target.dataset.id);closeDrawer()}});
+
+function openBook(id,boot){
+  const b=id==="sample"?SAMPLE:books.find(x=>x.id===id)||SAMPLE;
+  stop();aiClear();cur=b;if(!boot){settings.last=b.id;saveSettings()}
+  render(b);b.count=sents.length;
+  $("#bTitle").textContent=b.title;$("#bAuthor").textContent=b.author||"Unknown author";$("#pTitle").textContent=b.title;
+  $("#sampleNote").hidden=!b.sample;
+  idx=0;follow=true;$("#follow").hidden=true;
+  $("#main").scrollTop=0;
+  if(sents.length)setIdx(Math.min(b.pos||0,sents.length-1),(b.pos||0)>0);
+  renderLibrary();
+}
+
+/* ---------- importing ---------- */
+async function importFile(f){
+  const name=f.name;const ext=(name.split(".").pop()||"").toLowerCase();
+  try{
+    busy("Opening "+name+"…");
+    let book;
+    if(ext==="epub")book=await parseEpub(await f.arrayBuffer(),name);
+    else if(ext==="pdf")book=await parsePdf(await f.arrayBuffer(),(p,t)=>busy(`Reading ${name}: page ${p} of ${t}`));
+    else if(ext==="txt")book=parseTxt(await f.text());
+    else throw new Error(`Earshot opens .epub, .pdf and .txt files. “${name}” is a different type.`);
+    if(!book.blocks.some(b=>b.t!=="pg"&&b.x)){
+      throw new Error(ext==="pdf"?`No text found in “${name}”. It is probably a scanned PDF (pictures of pages), which needs OCR before it can be read aloud.`
+        :book.drm?`“${name}” is DRM-protected, so its text is locked. Only DRM-free EPUBs can be opened.`:`No readable text found in “${name}”.`);
+    }
+    book.title=book.title||name.replace(/\.[^.]+$/,"");
+    book.id="b"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    book.type=ext.toUpperCase();book.pos=0;book.added=Date.now();delete book.drm;
+    books.unshift(book);
+    openBook(book.id);DB.put(book);
+    toast(`Added “${book.title}”. Press play to start.`);
+  }catch(e){console.error(e);toast(e.message||String(e),true)}
+}
+async function importFiles(list){for(const f of list)await importFile(f)}
+
+function resolvePath(dir,href){const out=[];for(const p of (dir+href).split("/")){if(p==="..")out.pop();else if(p&&p!==".")out.push(p)}return out.join("/")}
+const BLK="h1,h2,h3,h4,h5,h6,p,li,blockquote,pre,dt,dd,figcaption,td";
+function extractBlocks(root,blocks){
+  if(!root)return;
+  root.querySelectorAll("script,style,rt,rp,head").forEach(n=>n.remove());
+  const els=[...root.querySelectorAll(BLK)].filter(el=>!el.querySelector(BLK));
+  if(!els.length){const x=norm(root.textContent);if(x)blocks.push({t:"p",x});return}
+  for(const el of els){const x=norm(el.textContent);if(x)blocks.push({t:/^h\d$/i.test(el.localName)?"h":"p",x})}
+}
+async function parseEpub(buf){
+  if(!window.JSZip)throw new Error("The EPUB reader didn't load. Check your internet connection and reload the page.");
+  const zip=await JSZip.loadAsync(buf);
+  const xml=s=>new DOMParser().parseFromString(s,"application/xml");
+  const cont=zip.file("META-INF/container.xml");if(!cont)throw new Error("This file isn't a valid EPUB (its table of contents is missing).");
+  const opfPath=xml(await cont.async("string")).getElementsByTagNameNS("*","rootfile")[0]?.getAttribute("full-path");
+  const opfFile=opfPath&&zip.file(opfPath);if(!opfFile)throw new Error("This EPUB is damaged: its package file is missing.");
+  const opf=xml(await opfFile.async("string"));
+  const dir=opfPath.includes("/")?opfPath.slice(0,opfPath.lastIndexOf("/")+1):"";
+  const meta=n=>norm(opf.getElementsByTagNameNS("*",n)[0]?.textContent);
+  const man={};for(const it of opf.getElementsByTagNameNS("*","item"))man[it.getAttribute("id")]={href:it.getAttribute("href")||"",type:it.getAttribute("media-type")||""};
+  const blocks=[];
+  for(const ref of opf.getElementsByTagNameNS("*","itemref")){
+    const it=man[ref.getAttribute("idref")];if(!it||(it.type&&!/html|xml/.test(it.type)))continue;
+    const path=resolvePath(dir,it.href.split("#")[0]);
+    const zf=zip.file(path)||zip.file(decodeURIComponent(path));if(!zf)continue;
+    const src=await zf.async("string");
+    let doc=new DOMParser().parseFromString(src,"application/xhtml+xml");
+    if(doc.getElementsByTagName("parsererror").length)doc=new DOMParser().parseFromString(src,"text/html");
+    extractBlocks(doc.body||doc.getElementsByTagName("body")[0]||doc.documentElement,blocks);
+  }
+  return {title:meta("title"),author:meta("creator"),blocks,drm:!!zip.file("META-INF/encryption.xml")};
+}
+async function parsePdf(buf,progress){
+  if(!window.pdfjsLib)throw new Error("The PDF reader didn't load. Check your internet connection and reload the page.");
+  const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buf),isEvalSupported:false}).promise;
+  let title="",author="";
+  try{const m=await pdf.getMetadata();title=norm(m.info&&m.info.Title);author=norm(m.info&&m.info.Author);if(/^(microsoft|untitled)|\.(docx?|pdf|indd)$/i.test(title))title=""}catch(e){}
+  const blocks=[];const N=pdf.numPages;
+  for(let p=1;p<=N;p++){
+    progress(p,N);
+    const page=await pdf.getPage(p);const tc=await page.getTextContent();
+    const lines=[];let line=null;
+    for(const it of tc.items){
+      if(!("str" in it))continue;
+      const y=it.transform[5],x=it.transform[4],h=Math.abs(it.transform[3])||it.height||10;
+      if(!line||Math.abs(y-line.y)>h*.5){if(line)lines.push(line);line={y,h,s:"",end:x}}
+      if(line.s&&it.str&&!/\s$/.test(line.s)&&!/^\s/.test(it.str)&&x-line.end>h*.18)line.s+=" ";
+      line.s+=it.str;line.end=x+(it.width||0);
+      if(it.hasEOL){lines.push(line);line=null}
+    }
+    if(line)lines.push(line);
+    let L=lines.map(l=>({...l,s:norm(l.s)})).filter(l=>l.s);
+    if(L.length&&/^\d{1,4}$/.test(L[0].s))L.shift();
+    if(L.length&&/^\d{1,4}$/.test(L[L.length-1].s))L.pop();
+    if(!L.length)continue;
+    if(N>1)blocks.push({t:"pg",x:"Page "+p});
+    const gaps=[];for(let i=1;i<L.length;i++){const g=L[i-1].y-L[i].y;if(g>0)gaps.push(g)}
+    gaps.sort((a,b)=>a-b);const med=gaps.length?gaps[Math.floor(gaps.length/2)]:14;
+    const maxLen=Math.max(...L.map(l=>l.s.length));
+    let para=L[0].s;
+    for(let i=1;i<L.length;i++){
+      const prev=L[i-1],c=L[i],g=prev.y-c.y;
+      const brk=g>med*1.45||g<-med||(/[.!?:”"]$/.test(prev.s)&&prev.s.length<maxLen*.7);
+      if(brk){blocks.push({t:"p",x:para});para=c.s}
+      else if(/[A-Za-z]-$/.test(para)&&/^[a-z]/.test(c.s))para=para.slice(0,-1)+c.s;
+      else para+=" "+c.s;
+    }
+    blocks.push({t:"p",x:para});
+  }
+  return {title,author,blocks};
+}
+function parseTxt(t){return {title:"",author:"",blocks:t.split(/\r?\n\s*\r?\n/).map(norm).filter(Boolean).map(x=>({t:"p",x}))}}
+
+/* ---------- toast ---------- */
+let toastTimer=0;
+function toast(msg,err){const t=$("#toast");clearTimeout(toastTimer);t.className=err?"err":"";t.textContent=msg;t.hidden=false;toastTimer=setTimeout(()=>t.hidden=true,err?7000:3200)}
+function busy(msg){const t=$("#toast");clearTimeout(toastTimer);t.className="";t.innerHTML='<span class="spin"></span><span></span>';t.lastChild.textContent=msg;t.hidden=false;toastTimer=setTimeout(()=>t.hidden=true,20000)}
+
+/* ---------- controls ---------- */
+$("#play").addEventListener("click",()=>playing?stop():play());
+$("#prev").addEventListener("click",()=>{playing?speakFrom(idx-1):setIdx(idx-1)});
+$("#next").addEventListener("click",()=>{playing?speakFrom(idx+1):setIdx(idx+1)});
+$("#text").addEventListener("click",e=>{const s=e.target.closest(".s");if(!s||String(getSelection()).length)return;speakFrom(+s.dataset.i)});
+$("#prog").addEventListener("input",e=>{const was=playing;if(was){playing=false;token++;if(synth)synth.cancel();aiHalt()}follow=true;setIdx(+e.target.value);if(was)playing=true});
+$("#prog").addEventListener("change",e=>{if(playing)speakFrom(+e.target.value)});
+const rate=$("#rate");rate.value=settings.rate;$("#rateVal").textContent=(+settings.rate).toFixed(2)+"×";
+rate.addEventListener("input",()=>{settings.rate=+rate.value;$("#rateVal").textContent=settings.rate.toFixed(2)+"×";aiSetRate();updateStatus()});
+rate.addEventListener("change",()=>{saveSettings();if(playing&&!isAI())speakFrom(idx)});
+$("#voice").addEventListener("change",e=>{
+  const was=playing;if(was)stop();
+  const prev=settings.voice;settings.voice=e.target.value;settings.preset="";
+  if(isAI())settings.lastAI=aiVoice();else settings.lastSys=settings.voice;
+  saveSettings();renderPresets();syncEngineUI();
+  if(isAI()){
+    aiVoiceChanged();
+    if(!settings.aiInstalled){openAISheet(String(prev).startsWith("ai:")?"":prev);return}
+    if(was)play();else aiPreview();
+  }else if(was)speakFrom(idx);
+});
+const acc=$("#acc"),accBtn=$("#accBtn");
+function setAcc(open){acc.hidden=!open;accBtn.setAttribute("aria-expanded",String(open));
+  if(open){acc.style.bottom=($("#player").offsetHeight+10)+"px";renderPresets();syncPitch()}}
+accBtn.addEventListener("click",e=>{e.stopPropagation();setAcc(acc.hidden)});
+$("#accClose").addEventListener("click",()=>setAcc(false));
+document.addEventListener("click",e=>{if(!acc.hidden&&!acc.contains(e.target)&&!accBtn.contains(e.target))setAcc(false)});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!acc.hidden)setAcc(false)});
+$("#presets").addEventListener("click",e=>{const b=e.target.closest(".ps");if(b)applyPreset(b.dataset.id)});
+$("#pitch").addEventListener("input",e=>{settings.pitch=+e.target.value;settings.preset="";syncPitch();renderPresets()});
+$("#pitch").addEventListener("change",()=>{saveSettings();playing?speakFrom(idx):preview()});
+syncPitch();
+function setSize(n){settings.size=Math.max(15,Math.min(32,n));document.documentElement.style.setProperty("--size",settings.size+"px");saveSettings()}
+$("#smaller").addEventListener("click",()=>setSize(settings.size-1));
+$("#bigger").addEventListener("click",()=>setSize(settings.size+1));
+$("#addBtn").addEventListener("click",()=>$("#file").click());
+$("#file").addEventListener("change",e=>{const fs=[...e.target.files];e.target.value="";closeDrawer();importFiles(fs)});
+
+const main=$("#main");
+function userScrolled(){if(playing&&follow){follow=false;$("#follow").hidden=false}}
+main.addEventListener("wheel",userScrolled,{passive:true});
+main.addEventListener("touchmove",userScrolled,{passive:true});
+$("#follow").addEventListener("click",()=>{follow=true;$("#follow").hidden=true;sents[idx]&&sents[idx].el.scrollIntoView({block:"center",behavior:"smooth"})});
+
+document.addEventListener("keydown",e=>{
+  const tag=e.target.tagName;if(["INPUT","SELECT","TEXTAREA","BUTTON"].includes(tag)||e.metaKey||e.ctrlKey||e.altKey)return;
+  if(e.code==="Space"){e.preventDefault();playing?stop():play()}
+  else if(e.key==="ArrowRight"){e.preventDefault();$("#next").click()}
+  else if(e.key==="ArrowLeft"){e.preventDefault();$("#prev").click()}
+});
+
+function closeDrawer(){$("#lib").classList.remove("open");$("#scrim").hidden=true}
+$("#menuBtn").addEventListener("click",()=>{$("#lib").classList.add("open");$("#scrim").hidden=false});
+$("#scrim").addEventListener("click",closeDrawer);
+
+let dragDepth=0;
+addEventListener("dragenter",e=>{if([...(e.dataTransfer?.types||[])].includes("Files")){dragDepth++;$("#drop").hidden=false}});
+addEventListener("dragleave",()=>{dragDepth=Math.max(0,dragDepth-1);if(!dragDepth)$("#drop").hidden=true});
+addEventListener("dragover",e=>e.preventDefault());
+addEventListener("drop",e=>{e.preventDefault();dragDepth=0;$("#drop").hidden=true;const fs=[...(e.dataTransfer?.files||[])];if(fs.length)importFiles(fs)});
+
+
+/* ---------- natural AI voice (Kokoro, open source, runs on the device) ---------- */
+const AI_VOICES=[["bf_emma","Emma","f","gb"],["bf_isabella","Isabella","f","gb"],["bf_alice","Alice","f","gb"],["bf_lily","Lily","f","gb"],
+  ["bm_george","George","m","gb"],["bm_fable","Fable","m","gb"],["bm_lewis","Lewis","m","gb"],["bm_daniel","Daniel","m","gb"],
+  ["af_heart","Heart","f","us"],["af_bella","Bella","f","us"],["am_michael","Michael","m","us"],["am_fenrir","Fenrir","m","us"]];
+const HF_BASE="https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/";
+const AHEAD_MAX=20*60;           // prepare up to 20 minutes of audio ahead
+const AI={state:"off",worker:null,device:"",audio:new Map(),inflight:new Map(),nextId:1,gen:0,el:new Audio(),seg:null,
+  waiting:false,waitIdx:-1,playWhenReady:false,previewAfterLoad:false,previewId:-1,rate:24000,started:false,switching:false,loaded:0,total:0,revert:""};
+AI.el.preload="auto";
+try{AI.el.preservesPitch=true;AI.el.webkitPreservesPitch=true}catch(e){}
+function isAI(){return String(settings.voice||"").startsWith("ai:")}
+function aiVoice(){return String(settings.voice).slice(3)||"bf_emma"}
+
+function aiEnsure(playAfter){
+  if(!settings.aiInstalled){openAISheet("");return}
+  if(playAfter)AI.playWhenReady=true;
+  if(AI.state==="ready"){if(AI.playWhenReady){AI.playWhenReady=false;play()}return}
+  if(AI.state==="loading"){updateStatus();return}
+  aiLoad(settings.aiMode,false);
+}
+function aiLoad(mode,fromSheet){
+  AI.state="loading";AI.loaded=0;AI.total=0;updateAIUI();updateStatus();
+  if(!fromSheet)busy("Starting the AI voice…");
+  try{AI.worker=new Worker("voice-worker.js",{type:"module"})}
+  catch(e){aiFail("This browser can't run the AI voice.");return}
+  AI.worker.onmessage=aiMsg;
+  AI.worker.onerror=()=>aiFail("The AI voice stopped working. Close Earshot, open it again and try once more.");
+  const fast=mode==="fast";
+  AI.worker.postMessage({type:"load",dtype:fast?"fp32":"q8",device:fast?"webgpu":"wasm"});
+}
+function aiFail(msg){
+  AI.state="failed";AI.playWhenReady=false;if(AI.worker){AI.worker.terminate();AI.worker=null}
+  const wasInstalling=!settings.aiInstalled;
+  updateAIUI();updateStatus();
+  toast(wasInstalling?msg+" Check your internet connection and try the download again.":msg,true);
+  if(playing)stop();
+  AI.state="off";updateAIUI();
+}
+function aiMsg(e){
+  const m=e.data;
+  if(m.type==="progress"){AI.loaded=m.loaded;AI.total=m.total;updateAIUI()}
+  else if(m.type==="note"){settings.aiMode="standard";saveSettings();toast(m.message)}
+  else if(m.type==="fail"){aiFail("The AI voice couldn't start ("+m.message+").")}
+  else if(m.type==="ready"){
+    AI.state="ready";AI.device=m.device;settings.aiInstalled=true;saveSettings();
+    $("#toast").hidden=true;loadVoices();updateAIUI();updateStatus();prefetchVoices();
+    if(!$("#aiSheet").hidden&&AI.fromSheet){AI.fromSheet=false;closeAISheet();toast("The AI voice is ready. Press play to listen.")}
+    if(AI.playWhenReady){AI.playWhenReady=false;playing=false;AI.waiting=false;play()}
+    else if(AI.previewAfterLoad){AI.previewAfterLoad=false;aiPreview()}
+  }
+  else if(m.type==="audio"||m.type==="error"){
+    const job=AI.inflight.get(m.id);AI.inflight.delete(m.id);
+    if(m.id===AI.previewId){AI.previewId=-1;if(m.type==="audio"&&!playing)aiPlayClip(m.pcm,m.rate);aiFill();return}
+    if(!job||job.gen!==AI.gen){aiFill();return}
+    // a sentence the voice can't say becomes a short pause, so reading carries on
+    const pcm=m.type==="audio"?m.pcm:new Int16Array(Math.round(AI.rate*.3));
+    if(m.type==="audio")AI.rate=m.rate;
+    AI.audio.set(job.i,pcm);
+    if(playing&&AI.waiting&&job.i===AI.waitIdx){AI.waiting=false;updatePlayBtn();aiStartSegment(job.i,0)}
+    aiFill();updateStatus();
+  }
+}
+function aiDur(i){const a=AI.audio.get(i);return a?a.length/AI.rate+aiGap(i):0}
+function aiGap(i){const a=sents[i],b=sents[i+1];if(!a||!b)return .3;return a.el.parentNode===b.el.parentNode?.12:.45}
+function aiAhead(){let t=0;for(let i=idx;i<sents.length&&AI.audio.has(i);i++)t+=aiDur(i);
+  if(AI.seg&&playing){const e=AI.seg.list.find(x=>x.i===idx);if(e)t-=Math.max(0,AI.el.currentTime-e.t0)}
+  return Math.max(0,t)}
+function aiFill(){
+  if(AI.state!=="ready"||!AI.worker||!cur||!sents.length||!AI.started)return;
+  for(const k of AI.audio.keys())if(k<idx-3||k>idx+800)AI.audio.delete(k);
+  const busyIdx=new Set();for(const j of AI.inflight.values())if(j.gen===AI.gen)busyIdx.add(j.i);
+  let ahead=0,i=idx;
+  while(busyIdx.size<2&&i<sents.length){
+    if(AI.audio.has(i)){ahead+=aiDur(i);if(ahead>AHEAD_MAX)return;i++;continue}
+    if(busyIdx.has(i)){i++;continue}
+    const id=AI.nextId++;AI.inflight.set(id,{i,gen:AI.gen});busyIdx.add(i);
+    AI.worker.postMessage({type:"gen",id,text:sents[i].text,voice:aiVoice()});i++;
+  }
+}
+function aiCancelQueue(){if(AI.worker)AI.worker.postMessage({type:"cancel"});AI.inflight.clear();AI.gen++}
+function aiClear(){aiCancelQueue();AI.audio.clear();AI.started=false;AI.waiting=false;aiDropSegment()}
+function aiVoiceChanged(){aiClear()}
+function aiHalt(){AI.waiting=false;if(!AI.el.paused){AI.switching=true;AI.el.pause();AI.switching=false}}
+function aiDropSegment(){if(AI.seg&&AI.seg.url){AI.switching=true;AI.el.removeAttribute("src");try{AI.el.load()}catch(e){}AI.switching=false;URL.revokeObjectURL(AI.seg.url)}AI.seg=null}
+function aiPlayFrom(i,offset){
+  AI.started=true;
+  if(AI.audio.has(i)){aiStartSegment(i,offset);aiFill();return}
+  let queued=false;for(const j of AI.inflight.values())if(j.gen===AI.gen&&j.i===i)queued=true;
+  if(!queued)aiCancelQueue();
+  AI.waiting=true;AI.waitIdx=i;updatePlayBtn();updateStatus();aiFill();
+}
+function wavBlob(parts,rate){
+  let n=0;for(const p of parts)n+=p.length;
+  const h=new DataView(new ArrayBuffer(44));const w=(o,s)=>{for(let k=0;k<s.length;k++)h.setUint8(o+k,s.charCodeAt(k))};
+  w(0,"RIFF");h.setUint32(4,36+n*2,true);w(8,"WAVE");w(12,"fmt ");h.setUint32(16,16,true);h.setUint16(20,1,true);h.setUint16(22,1,true);
+  h.setUint32(24,rate,true);h.setUint32(28,rate*2,true);h.setUint16(32,2,true);h.setUint16(34,16,true);w(36,"data");h.setUint32(40,n*2,true);
+  return new Blob([h.buffer,...parts],{type:"audio/wav"});
+}
+function aiStartSegment(i,offset){
+  const parts=[],list=[];let t=0,j=i;
+  while(j<sents.length&&AI.audio.has(j)&&t<AHEAD_MAX+120){
+    const pcm=AI.audio.get(j),d=pcm.length/AI.rate,g=aiGap(j);
+    parts.push(pcm,new Int16Array(Math.round(AI.rate*g)));list.push({i:j,t0:t,t1:t+d+g});t+=d+g;j++;
+  }
+  const old=AI.seg;
+  const url=URL.createObjectURL(wavBlob(parts,AI.rate));
+  AI.seg={start:i,end:j-1,list,url};
+  AI.switching=true;
+  AI.el.src=url;AI.el.defaultPlaybackRate=settings.rate;AI.el.playbackRate=settings.rate;
+  if(offset>0)AI.el.addEventListener("loadedmetadata",()=>{try{AI.el.currentTime=offset}catch(e){}},{once:true});
+  AI.el.play().then(()=>{AI.switching=false;AI.el.playbackRate=settings.rate}).catch(err=>{AI.switching=false;aiPlayBlocked(err)});
+  if(old&&old.url)setTimeout(()=>URL.revokeObjectURL(old.url),1000);
+  if(idx!==i)setIdx(i);
+  setMediaSession();
+}
+function aiPlayBlocked(){if(playing){stop();toast("Tap play to keep listening.")}}
+function aiSetRate(){try{AI.el.defaultPlaybackRate=settings.rate;AI.el.playbackRate=settings.rate}catch(e){}}
+function aiPlayClip(pcm,rate){
+  aiDropSegment();const url=URL.createObjectURL(wavBlob([pcm],rate));
+  AI.seg={start:-1,end:-2,list:[],url,clip:true};
+  AI.switching=true;AI.el.src=url;AI.el.playbackRate=settings.rate;
+  AI.el.play().then(()=>{AI.switching=false}).catch(()=>{AI.switching=false});
+}
+function aiPreview(){
+  if(!settings.aiInstalled){openAISheet("");return}
+  if(AI.state!=="ready"){AI.previewAfterLoad=true;aiEnsure(false);return}
+  if(playing)return;
+  aiCancelQueue();
+  const id=AI.nextId++;AI.previewId=id;AI.inflight.set(id,{i:-1,gen:-1});
+  AI.worker.postMessage({type:"gen",id,text:PREVIEW,voice:aiVoice()});
+}
+AI.el.addEventListener("timeupdate",()=>{
+  if(!playing||!AI.seg||AI.seg.clip)return;
+  const t=AI.el.currentTime;const e=AI.seg.list.find(x=>t<x.t1)||AI.seg.list[AI.seg.list.length-1];
+  if(e&&e.i!==idx){setIdx(e.i);aiFill()}
+  else if(Math.random()<.25)updateStatus();
+});
+AI.el.addEventListener("ended",()=>{
+  if(!playing||!AI.seg||AI.seg.clip)return;
+  const next=AI.seg.end+1;
+  if(next>=sents.length){stop();aiDropSegment();toast("Finished reading.");return}
+  aiPlayFrom(next,0);
+});
+AI.el.addEventListener("pause",()=>{
+  if(AI.switching||AI.el.ended||!playing||!isAI())return;
+  playing=false;keepAwake(false);updatePlayBtn();   // paused by the phone (lock screen, headphones, a call)
+});
+AI.el.addEventListener("play",()=>{
+  if(!playing&&isAI()&&AI.seg&&!AI.seg.clip){playing=true;updatePlayBtn()}   // resumed from the lock screen
+});
+// Before the screen locks, hand the player everything that is ready, so it can keep going in the background.
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState!=="hidden"||!playing||!isAI()||!AI.seg||AI.seg.clip)return;
+  if(!AI.audio.has(AI.seg.end+1))return;
+  const t=AI.el.currentTime;const e=AI.seg.list.find(x=>t<x.t1);if(!e)return;
+  aiStartSegment(e.i,Math.max(0,t-e.t0));
+});
+let msReady=false;
+function setMediaSession(){
+  if(!("mediaSession" in navigator)||!cur)return;
+  try{
+    navigator.mediaSession.metadata=new MediaMetadata({title:cur.title,artist:cur.author||"",album:"Earshot",
+      artwork:[{src:"icon-512.png",sizes:"512x512",type:"image/png"},{src:"icon-192.png",sizes:"192x192",type:"image/png"}]});
+    if(msReady)return;msReady=true;
+    const h=(a,f)=>{try{navigator.mediaSession.setActionHandler(a,f)}catch(e){}};
+    h("play",()=>{if(!playing)play()});
+    h("pause",()=>{if(playing)stop()});
+    h("previoustrack",()=>$("#prev").click());
+    h("nexttrack",()=>$("#next").click());
+    h("seekbackward",()=>$("#prev").click());
+    h("seekforward",()=>$("#next").click());
+  }catch(e){}
+}
+async function prefetchVoices(){
+  try{
+    const c=await caches.open("kokoro-voices");
+    for(const [id] of AI_VOICES){
+      const u=HF_BASE+"voices/"+id+".bin";
+      if(await c.match(u))continue;
+      const r=await fetch(u);if(r.ok)await c.put(u,new Response(await r.arrayBuffer(),{headers:{"Content-Type":"application/octet-stream"}}));
+    }
+  }catch(e){}
+}
+
+/* AI voice sheet and the Apple / AI switch */
+function openAISheet(revert){
+  AI.revert=revert||"";
+  $("#aiSheet").hidden=false;$("#aiScrim").hidden=false;updateAIUI();
+  setTimeout(()=>{const b=settings.aiInstalled?$("#aiClose"):$("#aiStd");b&&b.focus()},50);
+}
+function closeAISheet(){
+  $("#aiSheet").hidden=true;$("#aiScrim").hidden=true;
+  if(!settings.aiInstalled&&AI.state!=="loading"&&isAI()){settings.voice=AI.revert||settings.lastSys||"";saveSettings();loadVoices()}
+}
+function updateAIUI(){
+  const inst=settings.aiInstalled,loading=AI.state==="loading";
+  const showProg=loading&&(AI.fromSheet||!inst);
+  $("#aiChoices").hidden=inst||showProg;
+  $("#aiFast").hidden=$("#aiFastNote").hidden=!("gpu" in navigator);
+  $("#aiProg").hidden=!showProg;
+  $("#aiDone").hidden=!inst||showProg;
+  $("#aiRemove").hidden=!inst||loading;
+  if(showProg){
+    const mb=x=>Math.round(x/1048576);
+    const pct=AI.total?Math.min(100,AI.loaded/AI.total*100):0;
+    $("#aiBar").style.width=pct.toFixed(1)+"%";
+    $("#aiProgText").textContent=AI.total&&AI.loaded<AI.total?`Downloading… ${mb(AI.loaded)} of ${mb(AI.total)} MB`:AI.total?"Setting up the voice…":"Starting the download…";
+  }
+  if(inst)$("#aiDoneText").textContent=`The AI voice is installed (${settings.aiMode==="fast"?"fast mode":"standard"}). Pick a voice under Natural AI voices in the Voice menu, or choose a narrator in Accents.`;
+}
+function syncEngineUI(){
+  const ai=isAI();
+  $("#engSys").setAttribute("aria-checked",String(!ai));$("#engAI").setAttribute("aria-checked",String(ai));
+  $("#engNote").textContent=ai?"Natural AI voice: sounds more human and keeps reading with the screen off. Narrators use British AI voices.":"Apple voices: start instantly, but stop when the screen turns off.";
+  $("#accIntro").textContent=ai?"Pick a narrator. Each one is a British AI voice at a pace that suits the part.":"Pick a narrator. Each one uses a British, Scottish or Irish voice from your device, set deeper or slower to fit the part.";
+  $("#depthRow").hidden=ai;$("#sysTip").hidden=ai;
+}
+$("#engAI").addEventListener("click",()=>{
+  if(isAI())return;const prev=settings.voice;if(playing)stop();
+  settings.voice="ai:"+(settings.lastAI||"bf_emma");settings.preset="";saveSettings();loadVoices();aiVoiceChanged();
+  if(!settings.aiInstalled)openAISheet(prev);else aiPreview();
+});
+$("#engSys").addEventListener("click",()=>{
+  if(!isAI())return;if(playing)stop();
+  settings.voice=settings.lastSys||"";settings.preset="";saveSettings();loadVoices();
+});
+$("#aiStd").addEventListener("click",()=>{settings.aiMode="standard";saveSettings();AI.fromSheet=true;aiLoad("standard",true)});
+$("#aiFast").addEventListener("click",()=>{settings.aiMode="fast";saveSettings();AI.fromSheet=true;aiLoad("fast",true)});
+$("#aiClose").addEventListener("click",closeAISheet);
+$("#aiScrim").addEventListener("click",()=>{if(AI.state!=="loading")closeAISheet()});
+$("#aiRemove").addEventListener("click",async e=>{
+  const b=e.currentTarget;
+  if(!b.classList.contains("arm")){b.classList.add("arm");b.textContent="Tap again to remove";setTimeout(()=>{b.classList.remove("arm");b.textContent="Remove download"},3000);return}
+  if(playing)stop();aiClear();if(AI.worker){AI.worker.terminate();AI.worker=null}AI.state="off";
+  try{await caches.delete("transformers-cache");await caches.delete("kokoro-voices")}catch(err){}
+  settings.aiInstalled=false;if(isAI())settings.voice=settings.lastSys||"";saveSettings();
+  closeAISheet();loadVoices();toast("Removed the AI voice download.");
+});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#aiSheet").hidden&&AI.state!=="loading")closeAISheet()});
+
+/* ---------- keep the screen on while reading ---------- */
+let wakeLock=null;
+async function keepAwake(on){
+  try{
+    if(on&&!wakeLock&&navigator.wakeLock){wakeLock=await navigator.wakeLock.request("screen");wakeLock.addEventListener("release",()=>{wakeLock=null})}
+    else if(!on&&wakeLock){await wakeLock.release();wakeLock=null}
+  }catch(e){wakeLock=null}
+}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&playing)keepAwake(true)});
+
+/* ---------- boot ---------- */
+setSize(settings.size);
+try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist().catch(()=>{})}catch(e){}
+loadVoices();
+if(synth)synth.onvoiceschanged=loadVoices;
+if(isAI()&&settings.aiInstalled)setTimeout(()=>aiEnsure(false),400);
+openBook("sample",true);
+DB.open().then(()=>DB.all()).then(list=>{
+  books=list.sort((a,b)=>(b.added||0)-(a.added||0));
+  if(settings.last&&settings.last!=="sample"&&books.some(b=>b.id===settings.last))openBook(settings.last);else renderLibrary();
+});
+})();
+</script>
+<script>
+if("serviceWorker" in navigator){addEventListener("load",()=>{navigator.serviceWorker.register("sw.js").catch(()=>{})})}
+</script>
+</body>
+</html>
