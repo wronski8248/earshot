@@ -799,7 +799,8 @@ function aiFail(msg){
   AI.state="failed";AI.playWhenReady=false;if(AI.worker){AI.worker.terminate();AI.worker=null}
   const wasInstalling=!settings.aiInstalled;
   updateAIUI();updateStatus();
-  toast(wasInstalling?msg+" Check your internet connection and try the download again.":msg,true);
+  const net=/fetch|network|load failed|offline|connection/i.test(msg);
+  toast(net?msg+" Check your internet connection and try again.":msg+" Tap Accents → Natural AI voice to try again, or tell the app's maker what this message says.",true);
   if(playing)stop();
   AI.state="off";updateAIUI();
 }

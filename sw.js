@@ -1,14 +1,15 @@
 // Earshot offline support.
 // Keeps a copy of the app on the phone so it opens without internet.
-const VERSION = "earshot-v4";
+const VERSION = "earshot-v5";
 const APP_FILES = [
   "./", "index.html", "manifest.webmanifest",
   "jszip.min.js", "pdf.min.js", "pdf.worker.min.js",
   "literata.woff2", "literata-italic.woff2", "bricolage.woff2", "plex-mono-400.woff2", "plex-mono-500.woff2",
-  "icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png"
+  "icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png",
+  "safari-fixes.js"
 ];
 // Large files for the AI voice: saved the first time they're used, then never re-downloaded.
-const BIG = /\.(wasm|mjs)$|kokoro\.web\.js$|voice-worker\.js$/;
+const BIG = /\.(wasm|mjs)$|kokoro\.web\.js$|voice-worker\.js$|safari-fixes\.js$/;
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(APP_FILES.map(u => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
@@ -33,7 +34,7 @@ self.addEventListener("fetch", e => {
     // cache first: these files are big and only change when the app is updated
     e.respondWith((async () => {
       const c = await caches.open("earshot-ai-runtime");
-      const key = /voice-worker\.js$/.test(url.pathname) ? req.url + "#" + VERSION : req.url;
+      const key = /voice-worker\.js$|safari-fixes\.js$/.test(url.pathname) ? req.url + "#" + VERSION : req.url;
       let res = await c.match(key);
       if (!res) {
         res = await fetch(req);

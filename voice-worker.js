@@ -1,4 +1,5 @@
 // Earshot AI voice engine. Runs the open-source Kokoro model on the phone, off the main page.
+import "./safari-fixes.js"; // must load first
 import { KokoroTTS, env } from "./kokoro.web.js";
 
 env.wasmPaths = new URL("./", self.location.href).href;
