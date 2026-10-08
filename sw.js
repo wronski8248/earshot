@@ -1,6 +1,6 @@
 // Earshot offline support.
 // Keeps a copy of the app on the phone so it opens without internet.
-const VERSION = "earshot-v3";
+const VERSION = "earshot-v4";
 const APP_FILES = [
   "./", "index.html", "manifest.webmanifest",
   "jszip.min.js", "pdf.min.js", "pdf.worker.min.js",
@@ -11,7 +11,7 @@ const APP_FILES = [
 const BIG = /\.(wasm|mjs)$|kokoro\.web\.js$|voice-worker\.js$/;
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(APP_FILES)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSION).then(c => c.addAll(APP_FILES.map(u => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", e => {
@@ -33,7 +33,7 @@ self.addEventListener("fetch", e => {
     // cache first: these files are big and only change when the app is updated
     e.respondWith((async () => {
       const c = await caches.open("earshot-ai-runtime");
-      const key = url.pathname.endsWith("voice-worker.js") ? req.url + "#" + VERSION : req.url;
+      const key = /voice-worker\.js$/.test(url.pathname) ? req.url + "#" + VERSION : req.url;
       let res = await c.match(key);
       if (!res) {
         res = await fetch(req);

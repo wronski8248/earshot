@@ -292,7 +292,7 @@ main{grid-row:1;grid-column:2;overflow-y:auto;min-width:0;position:relative;scro
   <div id="aiChoices" style="display:flex;flex-direction:column;gap:8px">
     <button class="add" id="aiStd" type="button">Download the AI voice · 92 MB</button>
     <button class="ib" id="aiFast" type="button" hidden>Download fast mode · 326 MB</button>
-    <p class="hint2" id="aiFastNote" hidden>Fast mode uses your phone's graphics chip, so it prepares audio several times faster, but it's a bigger download. It needs iOS 26 or newer. If it doesn't start on your phone, Earshot switches to the standard download.</p>
+    <p class="hint2" id="aiFastNote" hidden>Fast mode uses your phone's graphics chip, so it prepares audio several times faster, but it's a bigger download. If it doesn't start on your device, Earshot switches to the standard download.</p>
   </div>
   <div id="aiProg" hidden style="display:flex;flex-direction:column;gap:8px">
     <span class="bar big"><i id="aiBar" style="width:0%"></i></span>
@@ -770,6 +770,9 @@ const AI={state:"off",worker:null,device:"",audio:new Map(),inflight:new Map(),n
 AI.el.preload="auto";
 try{AI.el.preservesPitch=true;AI.el.webkitPreservesPitch=true}catch(e){}
 function isAI(){return String(settings.voice||"").startsWith("ai:")}
+const IS_WEBKIT=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1)||/^((?!chrome|chromium|android|crios|fxios|edg).)*safari/i.test(navigator.userAgent);
+const CAN_FAST=("gpu" in navigator)&&!IS_WEBKIT;
+if(!CAN_FAST&&settings.aiMode==="fast"){settings.aiMode="standard";try{localStorage.setItem("earshot-settings",JSON.stringify(settings))}catch(e){}}
 function aiVoice(){return String(settings.voice).slice(3)||"bf_emma"}
 
 function aiEnsure(playAfter){
@@ -788,7 +791,7 @@ function aiLoad(mode,fromSheet){
   catch(e){aiFail("This browser can't run the AI voice.");return}
   AI.worker.onmessage=aiMsg;
   AI.worker.onerror=()=>aiFail("The AI voice stopped working. Close Earshot, open it again and try once more.");
-  const fast=mode==="fast";
+  const fast=mode==="fast"&&CAN_FAST;
   AI.worker.postMessage({type:"load",dtype:fast?"fp32":"q8",device:fast?"webgpu":"wasm"});
 }
 function aiFail(msg){
@@ -963,7 +966,7 @@ function updateAIUI(){
   const inst=settings.aiInstalled,loading=AI.state==="loading";
   const showProg=loading&&(AI.fromSheet||!inst);
   $("#aiChoices").hidden=inst||showProg;
-  $("#aiFast").hidden=$("#aiFastNote").hidden=!("gpu" in navigator);
+  $("#aiFast").hidden=$("#aiFastNote").hidden=!CAN_FAST;
   $("#aiProg").hidden=!showProg;
   $("#aiDone").hidden=!inst||showProg;
   $("#aiRemove").hidden=!inst||loading;
@@ -1001,7 +1004,8 @@ $("#aiFast").addEventListener("click",()=>{settings.aiMode="fast";saveSettings()
 $("#aiClose").addEventListener("click",closeAISheet);
 $("#aiRetry").addEventListener("click",()=>{
   if(AI.worker){AI.worker.terminate();AI.worker=null}
-  AI.fromSheet=true;aiLoad(settings.aiMode,true);
+  settings.aiMode="standard";saveSettings();
+  AI.fromSheet=true;aiLoad("standard",true);
 });
 $("#aiScrim").addEventListener("click",()=>{if(AI.state!=="loading"||AI.slow)closeAISheet()});
 $("#aiRemove").addEventListener("click",async e=>{
