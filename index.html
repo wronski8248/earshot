@@ -297,7 +297,8 @@ main{grid-row:1;grid-column:2;overflow-y:auto;min-width:0;position:relative;scro
   <div id="aiProg" hidden style="display:flex;flex-direction:column;gap:8px">
     <span class="bar big"><i id="aiBar" style="width:0%"></i></span>
     <p id="aiProgText">Starting the download…</p>
-    <p class="hint2">Keep Earshot open until it finishes.</p>
+    <p class="hint2" id="aiProgHint">Keep Earshot open until it finishes.</p>
+    <button class="ib" id="aiRetry" type="button" hidden>Try again</button>
   </div>
   <div id="aiDone" hidden style="display:flex;flex-direction:column;gap:8px">
     <p id="aiDoneText">The AI voice is ready.</p>
@@ -779,7 +780,9 @@ function aiEnsure(playAfter){
   aiLoad(settings.aiMode,false);
 }
 function aiLoad(mode,fromSheet){
-  AI.state="loading";AI.loaded=0;AI.total=0;updateAIUI();updateStatus();
+  AI.state="loading";AI.loaded=0;AI.total=0;AI.stage="";AI.slow=false;updateAIUI();updateStatus();
+  clearTimeout(AI.watch);
+  AI.watch=setTimeout(()=>{if(AI.state==="loading"){AI.slow=true;updateAIUI()}},150000);
   if(!fromSheet)busy("Starting the AI voice…");
   try{AI.worker=new Worker("voice-worker.js",{type:"module"})}
   catch(e){aiFail("This browser can't run the AI voice.");return}
@@ -789,6 +792,7 @@ function aiLoad(mode,fromSheet){
   AI.worker.postMessage({type:"load",dtype:fast?"fp32":"q8",device:fast?"webgpu":"wasm"});
 }
 function aiFail(msg){
+  clearTimeout(AI.watch);AI.slow=false;
   AI.state="failed";AI.playWhenReady=false;if(AI.worker){AI.worker.terminate();AI.worker=null}
   const wasInstalling=!settings.aiInstalled;
   updateAIUI();updateStatus();
@@ -799,9 +803,12 @@ function aiFail(msg){
 function aiMsg(e){
   const m=e.data;
   if(m.type==="progress"){AI.loaded=m.loaded;AI.total=m.total;updateAIUI()}
+  else if(m.type==="stage"){AI.stage=m.stage;updateAIUI();
+    clearTimeout(AI.watch);AI.watch=setTimeout(()=>{if(AI.state==="loading"){AI.slow=true;updateAIUI()}},m.stage==="testing"?90000:120000)}
   else if(m.type==="note"){settings.aiMode="standard";saveSettings();toast(m.message)}
   else if(m.type==="fail"){aiFail("The AI voice couldn't start ("+m.message+").")}
   else if(m.type==="ready"){
+    clearTimeout(AI.watch);AI.slow=false;
     AI.state="ready";AI.device=m.device;settings.aiInstalled=true;saveSettings();
     $("#toast").hidden=true;loadVoices();updateAIUI();updateStatus();prefetchVoices();
     if(!$("#aiSheet").hidden&&AI.fromSheet){AI.fromSheet=false;closeAISheet();toast("The AI voice is ready. Press play to listen.")}
@@ -964,7 +971,12 @@ function updateAIUI(){
     const mb=x=>Math.round(x/1048576);
     const pct=AI.total?Math.min(100,AI.loaded/AI.total*100):0;
     $("#aiBar").style.width=pct.toFixed(1)+"%";
-    $("#aiProgText").textContent=AI.total&&AI.loaded<AI.total?`Downloading… ${mb(AI.loaded)} of ${mb(AI.total)} MB`:AI.total?"Setting up the voice…":"Starting the download…";
+    $("#aiProgText").textContent=AI.slow?"This is taking longer than it should."
+      :AI.stage==="testing"?"Testing the voice…"
+      :AI.stage==="starting"||(AI.total&&AI.loaded>=AI.total)?"Starting the voice engine… this can take a minute."
+      :AI.total?`Downloading… ${mb(AI.loaded)} of ${mb(AI.total)} MB`:"Starting the download…";
+    $("#aiRetry").hidden=!AI.slow;
+    $("#aiProgHint").textContent=AI.slow?"Tap Try again. The download is saved, so it won't start over.":"Keep Earshot open until it finishes.";
   }
   if(inst)$("#aiDoneText").textContent=`The AI voice is installed (${settings.aiMode==="fast"?"fast mode":"standard"}). Pick a voice under Natural AI voices in the Voice menu, or choose a narrator in Accents.`;
 }
@@ -987,7 +999,11 @@ $("#engSys").addEventListener("click",()=>{
 $("#aiStd").addEventListener("click",()=>{settings.aiMode="standard";saveSettings();AI.fromSheet=true;aiLoad("standard",true)});
 $("#aiFast").addEventListener("click",()=>{settings.aiMode="fast";saveSettings();AI.fromSheet=true;aiLoad("fast",true)});
 $("#aiClose").addEventListener("click",closeAISheet);
-$("#aiScrim").addEventListener("click",()=>{if(AI.state!=="loading")closeAISheet()});
+$("#aiRetry").addEventListener("click",()=>{
+  if(AI.worker){AI.worker.terminate();AI.worker=null}
+  AI.fromSheet=true;aiLoad(settings.aiMode,true);
+});
+$("#aiScrim").addEventListener("click",()=>{if(AI.state!=="loading"||AI.slow)closeAISheet()});
 $("#aiRemove").addEventListener("click",async e=>{
   const b=e.currentTarget;
   if(!b.classList.contains("arm")){b.classList.add("arm");b.textContent="Tap again to remove";setTimeout(()=>{b.classList.remove("arm");b.textContent="Remove download"},3000);return}
@@ -1022,7 +1038,16 @@ DB.open().then(()=>DB.all()).then(list=>{
 })();
 </script>
 <script>
-if("serviceWorker" in navigator){addEventListener("load",()=>{navigator.serviceWorker.register("sw.js").catch(()=>{})})}
+if("serviceWorker" in navigator){
+  const hadController=!!navigator.serviceWorker.controller;let reloaded=false;
+  navigator.serviceWorker.addEventListener("controllerchange",()=>{
+    if(!hadController||reloaded)return;
+    const btn=document.querySelector("#play");
+    if(btn&&btn.getAttribute("aria-label")==="Pause")return;   // don't interrupt reading
+    reloaded=true;location.reload();
+  });
+  addEventListener("load",()=>{navigator.serviceWorker.register("sw.js").then(r=>r.update()).catch(()=>{})});
+}
 </script>
 </body>
 </html>

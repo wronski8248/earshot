@@ -1,7 +1,6 @@
 // Earshot offline support.
-// Keeps a copy of the app on the phone so it opens without internet, and turns on
-// "cross-origin isolation" so the AI voice can use several processor cores.
-const VERSION = "earshot-v2";
+// Keeps a copy of the app on the phone so it opens without internet.
+const VERSION = "earshot-v3";
 const APP_FILES = [
   "./", "index.html", "manifest.webmanifest",
   "jszip.min.js", "pdf.min.js", "pdf.worker.min.js",
@@ -23,14 +22,7 @@ self.addEventListener("activate", e => {
   })());
 });
 
-function isolate(res) {
-  if (!res || res.type === "opaque" || res.status === 0) return res;
-  const h = new Headers(res.headers);
-  h.set("Cross-Origin-Opener-Policy", "same-origin");
-  h.set("Cross-Origin-Embedder-Policy", "require-corp");
-  h.set("Cross-Origin-Resource-Policy", "same-origin");
-  return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
-}
+function isolate(res) { return res; }
 
 self.addEventListener("fetch", e => {
   const req = e.request;

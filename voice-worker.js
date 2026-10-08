@@ -12,7 +12,12 @@ function post(msg, transfer) { self.postMessage(msg, transfer || []); }
 
 async function load({ dtype, device }) {
   const files = {};
+  let announced = false;
   const progress_callback = (p) => {
+    if (p.status === "done" && !announced) {
+      const all = Object.values(files);
+      if (all.length && all.every(f => f.loaded >= f.total)) { announced = true; post({ type: "stage", stage: "starting" }); }
+    }
     if (p.status === "progress" && p.total) {
       files[p.file] = { loaded: p.loaded, total: p.total };
       let loaded = 0, total = 0;
@@ -31,6 +36,7 @@ async function load({ dtype, device }) {
     } else throw e;
   }
   // warm up so the first real sentence starts quickly
+  post({ type: "stage", stage: "testing" });
   await tts.generate("Ready.", { voice: "bf_emma" });
   post({ type: "ready", device, threads: self.crossOriginIsolated ? "multi" : "single", ms: Math.round(performance.now() - t0) });
 }
@@ -60,6 +66,10 @@ async function pump() {
   }
   busy = false;
 }
+
+self.addEventListener("unhandledrejection", (e) => {
+  post({ type: "fail", message: String(e.reason && e.reason.message || e.reason) });
+});
 
 self.onmessage = async (e) => {
   const m = e.data;
