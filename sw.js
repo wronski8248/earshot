@@ -1,15 +1,15 @@
 // Earshot offline support.
 // Keeps a copy of the app on the phone so it opens without internet.
-const VERSION = "earshot-v5";
+const VERSION = "earshot-v6";
 const APP_FILES = [
   "./", "index.html", "manifest.webmanifest",
   "jszip.min.js", "pdf.min.js", "pdf.worker.min.js",
   "literata.woff2", "literata-italic.woff2", "bricolage.woff2", "plex-mono-400.woff2", "plex-mono-500.woff2",
   "icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png",
-  "safari-fixes.js"
+  "safari-fixes.js", "voice-worker.js"
 ];
 // Large files for the AI voice: saved the first time they're used, then never re-downloaded.
-const BIG = /\.(wasm|mjs)$|kokoro\.web\.js$|voice-worker\.js$|safari-fixes\.js$/;
+const BIG = /\.(wasm|mjs)$|kokoro\.web\.js$/;
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(APP_FILES.map(u => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
@@ -34,7 +34,7 @@ self.addEventListener("fetch", e => {
     // cache first: these files are big and only change when the app is updated
     e.respondWith((async () => {
       const c = await caches.open("earshot-ai-runtime");
-      const key = /voice-worker\.js$|safari-fixes\.js$/.test(url.pathname) ? req.url + "#" + VERSION : req.url;
+      const key = req.url;
       let res = await c.match(key);
       if (!res) {
         res = await fetch(req);
@@ -45,16 +45,22 @@ self.addEventListener("fetch", e => {
     return;
   }
 
-  // everything else: show the saved copy right away and refresh it in the background
+  // everything else: get the newest copy when online (so fixes arrive right away),
+  // and fall back to the saved copy when offline or the network is very slow
   e.respondWith((async () => {
     const cache = await caches.open(VERSION);
-    const saved = await cache.match(req, { ignoreSearch: true });
-    const fresh = fetch(req).then(res => {
+    try {
+      const res = await Promise.race([
+        fetch(req, { cache: "no-cache" }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("slow")), 5000))
+      ]);
       if (res.ok) cache.put(req, res.clone());
       return res;
-    }).catch(() => null);
-    if (saved) { e.waitUntil(fresh); return isolate(saved); }
-    const res = (await fresh) || (req.mode === "navigate" ? await cache.match("index.html") : null);
-    return res ? isolate(res) : Response.error();
+    } catch (err) {
+      const saved = await cache.match(req, { ignoreSearch: true });
+      if (saved) return saved;
+      if (req.mode === "navigate") { const home = await cache.match("index.html"); if (home) return home; }
+      return Response.error();
+    }
   })());
 });
