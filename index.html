@@ -148,7 +148,11 @@ main{grid-row:1;grid-column:2;overflow-y:auto;min-width:0;position:relative;scro
 #pitchVal{font-family:var(--f-mono);font-size:12.5px;min-width:9ch;text-align:right;font-variant-numeric:tabular-nums}
 .tip{margin:12px 0 0;font-size:12px;line-height:1.5;color:var(--muted)}
 .tip b{color:var(--ink)}
-@media (max-width:520px){#presets{grid-template-columns:minmax(0,1fr)}#acc{right:16px;left:16px;width:auto}}
+@media (max-width:520px){.vc label{display:none}#voice{max-width:none;width:100%}
+  .opts{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center}
+  .opts .spd{grid-column:1/-1}.opts .vc{min-width:0}
+  #prepBtn,#accBtn{padding:0 10px}
+  #presets{grid-template-columns:minmax(0,1fr)}#acc{right:16px;left:16px;width:auto}}
 
 /* Voice type switch */
 .seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:11px;background:var(--paper);border:1px solid var(--line);margin-bottom:10px}
@@ -157,6 +161,18 @@ main{grid-row:1;grid-column:2;overflow-y:auto;min-width:0;position:relative;scro
 .engnote{margin:0 0 12px;font-size:12.5px;line-height:1.45;color:var(--muted)}
 #play.wait{position:relative}
 #play.wait::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid var(--accent);border-right-color:transparent;animation:sp 1s linear infinite}
+
+/* Prepare ahead sheet (shares the AI sheet look) */
+#prepScrim{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.4)}
+#prepSheet{position:fixed;z-index:71;left:50%;top:50%;transform:translate(-50%,-50%);width:min(440px,calc(100% - 32px));max-height:calc(100% - 48px);overflow-y:auto;
+  background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:20px;display:flex;flex-direction:column;gap:12px}
+#prepSheet h3{margin:0;font-family:var(--f-read);font-size:22px;font-weight:600}
+#prepSheet p{margin:0;font-size:13.5px;line-height:1.5}
+#prepSheet .ib{height:auto;min-height:40px;padding:8px 12px;font-weight:600}
+.prepgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.mono{font-family:var(--f-mono);font-size:12.5px!important;color:var(--muted);font-variant-numeric:tabular-nums}
+#prepBtn.busy{border-color:var(--accent);color:var(--accent)}
+#prepClear.arm{color:var(--danger);border-color:var(--danger)}
 
 /* AI voice sheet */
 #aiScrim{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.4)}
@@ -258,6 +274,10 @@ main{grid-row:1;grid-column:2;overflow-y:auto;min-width:0;position:relative;scro
     <div class="opts">
       <div class="spd"><label for="rate">Speed</label><input type="range" id="rate" min="0.5" max="3" step="0.05" value="1"><span id="rateVal">1.00×</span></div>
       <div class="vc"><label for="voice">Voice</label><select id="voice"><option>Loading voices…</option></select></div>
+      <button class="ib" id="prepBtn" type="button" hidden>
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1.5v8M3.5 6 7 9.5 10.5 6M2 12.5h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span id="prepLabel">Prepare</span>
+      </button>
       <button class="ib" id="accBtn" type="button" aria-expanded="false" aria-controls="acc">
         <svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><path d="M7 1 1.5 3v4.5C1.5 11 4 13.6 7 15c3-1.4 5.5-4 5.5-7.5V3z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
         Accents
@@ -316,6 +336,31 @@ main{grid-row:1;grid-column:2;overflow-y:auto;min-width:0;position:relative;scro
     <button class="ib" id="aiClose" type="button">Close</button>
   </div>
 </section>
+<div id="prepScrim" hidden></div>
+<section id="prepSheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="prepTitle">
+  <h3 id="prepTitle">Prepare ahead</h3>
+  <p>Earshot makes the AI audio now and saves it on your phone, so later it plays with no waiting, even with your screen off.</p>
+  <div id="prepChoices" style="display:flex;flex-direction:column;gap:8px">
+    <p class="hint2">Starting from where you are in this book, prepare:</p>
+    <div class="prepgrid">
+      <button class="ib" type="button" data-min="30">30 minutes</button>
+      <button class="ib" type="button" data-min="60">1 hour</button>
+      <button class="ib" type="button" data-min="120">2 hours</button>
+    </div>
+  </div>
+  <div id="prepRun" hidden style="display:flex;flex-direction:column;gap:8px">
+    <span class="bar big"><i id="prepBar" style="width:0%"></i></span>
+    <p id="prepText" class="mono">Starting…</p>
+    <p class="hint2">Keep Earshot open. It keeps your screen on while it works, and plugging in your phone is best. You can keep listening at the same time.</p>
+    <button class="ib" id="prepStopBtn" type="button">Stop preparing</button>
+  </div>
+  <p class="hint2" id="prepReady"></p>
+  <div class="sheetbtns">
+    <button class="ib" id="prepClear" type="button">Delete saved audio</button>
+    <button class="ib" id="prepClose" type="button">Close</button>
+  </div>
+  <p class="hint2" id="prepSpace"></p>
+</section>
 <div id="toast" hidden role="status" aria-live="polite"></div>
 <div id="drop" hidden><div>Drop EPUB or PDF files to add them</div></div>
 
@@ -334,11 +379,30 @@ function saveSettings(){try{localStorage.setItem("earshot-settings",JSON.stringi
 
 /* ---------- storage (IndexedDB, per browser) ---------- */
 const DB={db:null,
-  async open(){try{this.db=await new Promise((res,rej)=>{const r=indexedDB.open("earshot",1);r.onupgradeneeded=()=>r.result.createObjectStore("books",{keyPath:"id"});r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}catch(e){this.db=null}},
+  async open(){try{this.db=await new Promise((res,rej)=>{const r=indexedDB.open("earshot",2);
+    r.onupgradeneeded=()=>{const d=r.result;
+      if(!d.objectStoreNames.contains("books"))d.createObjectStore("books",{keyPath:"id"});
+      if(!d.objectStoreNames.contains("pcm"))d.createObjectStore("pcm");     // prepared AI audio
+      if(!d.objectStoreNames.contains("dur"))d.createObjectStore("dur")};    // its length in seconds
+    r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}catch(e){this.db=null}},
   store(m){return this.db.transaction("books",m).objectStore("books")},
   all(){return new Promise(res=>{if(!this.db)return res([]);try{const r=this.store("readonly").getAll();r.onsuccess=()=>res(r.result||[]);r.onerror=()=>res([])}catch(e){res([])}})},
   put(b){if(!this.db||b.sample)return;try{this.store("readwrite").put(b)}catch(e){}},
-  del(id){if(!this.db)return;try{this.store("readwrite").delete(id)}catch(e){}}
+  del(id){if(!this.db)return;try{this.store("readwrite").delete(id)}catch(e){}ADB.clear(id+"|")}
+};
+// Prepared AI audio, saved per book + voice + sentence, so it survives closing the app.
+const ADB={
+  ok(){return !!(DB.db&&DB.db.objectStoreNames.contains("pcm"))},
+  put(key,pcm,dur){if(!this.ok())return;try{const t=DB.db.transaction(["pcm","dur"],"readwrite");t.objectStore("pcm").put(pcm,key);t.objectStore("dur").put(dur,key)}catch(e){}},
+  get(key){return new Promise(res=>{if(!this.ok())return res(null);try{const r=DB.db.transaction("pcm").objectStore("pcm").get(key);r.onsuccess=()=>res(r.result||null);r.onerror=()=>res(null)}catch(e){res(null)}})},
+  durs(prefix){return new Promise(res=>{const m=new Map();if(!this.ok())return res(m);
+    try{const r=DB.db.transaction("dur").objectStore("dur").openCursor(IDBKeyRange.bound(prefix,prefix+"\uffff"));
+      r.onsuccess=()=>{const c=r.result;if(!c)return res(m);m.set(+String(c.key).slice(prefix.length),c.value);c.continue()};r.onerror=()=>res(m)}catch(e){res(m)}})},
+  clear(prefix){return new Promise(res=>{if(!this.ok())return res();
+    try{const t=DB.db.transaction(["pcm","dur"],"readwrite");
+      const range=prefix?IDBKeyRange.bound(prefix,prefix+"\uffff"):null;
+      if(range){t.objectStore("pcm").delete(range);t.objectStore("dur").delete(range)}else{t.objectStore("pcm").clear();t.objectStore("dur").clear()}
+      t.oncomplete=()=>res();t.onerror=()=>res()}catch(e){res()}})}
 };
 
 /* ---------- sample ---------- */
@@ -378,12 +442,14 @@ function splitSentences(t){
   for(const p of parts){ if(out.length&&ABBR.test(out[out.length-1])) out[out.length-1]+=p; else out.push(p); }
   return out.filter(s=>s.trim());
 }
+// Long sentences are split at commas and semicolons, so the AI voice can start speaking sooner.
+const CHUNK_VER=2;
 function chunk(s){
-  if(s.length<=260)return [s];
+  if(s.length<=160)return [s];
   const bits=s.split(/(?<=[;:,—–])\s+/);const out=[];let acc="";
-  for(const b of bits){ if(acc&&(acc+" "+b).length>220){out.push(acc+" ");acc=b}else acc=acc?acc+" "+b:b; }
-  if(acc)out.push(acc);
-  return out.flatMap(c=>c.length>400?c.match(/.{1,300}(\s|$)/g):[c]);
+  for(const b of bits){ if(acc&&acc.length>=40&&(acc+" "+b).length>140){out.push(acc+" ");acc=b}else acc=acc?acc+" "+b:b; }
+  if(acc){ if(out.length&&acc.length<25)out[out.length-1]+=acc; else out.push(acc); }
+  return out.flatMap(c=>c.length>300?c.match(/.{1,220}(\s|$)/g):[c]);
 }
 
 /* ---------- rendering ---------- */
@@ -422,7 +488,7 @@ function updateStatus(){
     if(playing&&AI.waiting){$("#status").textContent=`${pct}% · preparing the voice…`;return}
     if(AI.state==="loading"){$("#status").textContent=`${pct}% · starting the AI voice…`;return}
     const ah=aiAhead();
-    if(AI.started&&AI.state==="ready"){$("#status").textContent=`${pct}% · ${ah<60?"under a minute":fmtTime(ah/60/settings.rate)} ready ahead`;return}
+    if((AI.started||AI.durs.size)&&AI.state==="ready"&&(ah>0||AI.started)){$("#status").textContent=`${pct}% · ${ah<60?"under a minute":fmtTime(ah/60/settings.rate)} ready ahead`;return}
   }
   $("#status").textContent=`${pct}% · ${fmtTime(left)} left at ${settings.rate.toFixed(2)}×`;
 }
@@ -775,8 +841,9 @@ const AI_VOICES=[["bf_emma","Emma","f","gb",1],["bm_george","George","m","gb"],[
   ["af_kore","Kore","f","us"],["af_sarah","Sarah","f","us"],["am_fenrir","Fenrir","m","us"],["am_michael","Michael","m","us"],
   ["am_puck","Puck","m","us"],["af_nova","Nova","f","us"],["af_alloy","Alloy","f","us"]];
 const HF_BASE="https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/";
-const AHEAD_MAX=20*60;           // prepare up to 20 minutes of audio ahead
+const AHEAD_MAX=20*60;           // keep up to 20 minutes of audio ready in memory
 const AI={state:"off",worker:null,device:"",audio:new Map(),inflight:new Map(),nextId:1,gen:0,el:new Audio(),seg:null,
+  durs:new Map(),durKey:"",filling:false,fillAgain:false,prep:null,
   waiting:false,waitIdx:-1,playWhenReady:false,previewAfterLoad:false,previewId:-1,rate:24000,started:false,switching:false,loaded:0,total:0,revert:""};
 AI.el.preload="auto";
 try{AI.el.preservesPitch=true;AI.el.webkitPreservesPitch=true}catch(e){}
@@ -844,7 +911,7 @@ function aiMsg(e){
   else if(m.type==="ready"){
     clearTimeout(AI.watch);AI.slow=false;
     AI.state="ready";AI.device=m.device;settings.aiInstalled=true;saveSettings();
-    $("#toast").hidden=true;loadVoices();updateAIUI();updateStatus();prefetchVoices();
+    $("#toast").hidden=true;loadVoices();updateAIUI();updateStatus();prefetchVoices();aiLoadIndex();
     if(!$("#aiSheet").hidden&&AI.fromSheet){AI.fromSheet=false;closeAISheet();toast("The AI voice is ready. Press play to listen.")}
     if(AI.playWhenReady){AI.playWhenReady=false;playing=false;AI.waiting=false;play()}
     else if(AI.previewAfterLoad){AI.previewAfterLoad=false;aiPreview()}
@@ -852,41 +919,75 @@ function aiMsg(e){
   else if(m.type==="audio"||m.type==="error"){
     const job=AI.inflight.get(m.id);AI.inflight.delete(m.id);
     if(m.id===AI.previewId){AI.previewId=-1;if(m.type==="audio"&&!playing)aiPlayClip(m.pcm,m.rate);aiFill();return}
-    if(!job||job.gen!==AI.gen){aiFill();return}
+    if(!job){aiFill();return}
     // a sentence the voice can't say becomes a short pause, so reading carries on
     const pcm=m.type==="audio"?m.pcm:new Int16Array(Math.round(AI.rate*.3));
     if(m.type==="audio")AI.rate=m.rate;
+    if(m.type==="audio"&&job.key)ADB.put(job.key,pcm,pcm.length/AI.rate);   // saved even if you've moved on
+    if(job.gen!==AI.gen){aiFill();return}
+    AI.durs.set(job.i,pcm.length/AI.rate);
     AI.audio.set(job.i,pcm);
-    if(playing&&AI.waiting&&job.i===AI.waitIdx){AI.waiting=false;updatePlayBtn();aiStartSegment(job.i,0)}
-    aiFill();updateStatus();
+    aiAvailable(job.i);
+    aiFill();updateStatus();updatePrepUI();
   }
 }
-function aiDur(i){const a=AI.audio.get(i);return a?a.length/AI.rate+aiGap(i):0}
-function aiGap(i){const a=sents[i],b=sents[i+1];if(!a||!b)return .3;return a.el.parentNode===b.el.parentNode?.12:.45}
-function aiAhead(){let t=0;for(let i=idx;i<sents.length&&AI.audio.has(i);i++)t+=aiDur(i);
+function aiDur(i){const a=AI.audio.get(i);if(a)return a.length/AI.rate+aiGap(i);const d=AI.durs.get(i);return d!=null?d+aiGap(i):0}
+function aiHas(i){return AI.audio.has(i)||AI.durs.has(i)}
+function aiKeyPrefix(){return cur?cur.id+"|"+aiVoice()+"|"+CHUNK_VER+"|":""}
+function aiAvailable(i){if(playing&&AI.waiting&&i===AI.waitIdx){AI.waiting=false;updatePlayBtn();aiStartSegment(i,0)}}
+async function aiLoadIndex(){
+  const prefix=aiKeyPrefix();AI.durKey=prefix;
+  const m=await ADB.durs(prefix);
+  if(AI.durKey!==prefix)return;
+  for(const [i,d] of m)if(!AI.durs.has(i))AI.durs.set(i,d);
+  updateStatus();updatePrepUI();aiFill();
+}
+function aiGap(i){const a=sents[i],b=sents[i+1];if(!a||!b)return .3;
+  if(a.el.parentNode!==b.el.parentNode)return .45;
+  return /[,;:—–]\s*$/.test(a.text)?.05:.12}
+function aiAhead(){let t=0;for(let i=idx;i<sents.length&&aiHas(i);i++)t+=aiDur(i);
   if(AI.seg&&playing){const e=AI.seg.list.find(x=>x.i===idx);if(e)t-=Math.max(0,AI.el.currentTime-e.t0)}
   return Math.max(0,t)}
 function aiFill(){
-  if(AI.state!=="ready"||!AI.worker||!cur||!sents.length||!AI.started)return;
-  for(const k of AI.audio.keys())if(k<idx-3||k>idx+800)AI.audio.delete(k);
+  if(AI.filling){AI.fillAgain=true;return}
+  AI.filling=true;
+  (async()=>{try{do{AI.fillAgain=false;await aiFillOnce()}while(AI.fillAgain)}finally{AI.filling=false}})();
+}
+async function aiFillOnce(){
+  if(AI.state!=="ready"||!AI.worker||!cur||!sents.length||!(AI.started||AI.prep))return;
+  const gen=AI.gen,prefix=aiKeyPrefix();
+  // 1) bring saved audio for the next 20 minutes into memory
+  let t=0,i=idx,last=idx;
+  for(;i<sents.length&&t<AHEAD_MAX;i++){
+    if(!AI.audio.has(i)&&AI.durs.has(i)){
+      const pcm=await ADB.get(prefix+i);if(gen!==AI.gen)return;
+      if(pcm){AI.audio.set(i,pcm);aiAvailable(i)}else{AI.durs.delete(i);break}
+    }
+    if(!AI.audio.has(i))break;
+    t+=aiDur(i);last=i;
+  }
+  for(const k of AI.audio.keys())if(k<idx-3||k>last+3)AI.audio.delete(k);
+  // 2) make whatever is missing, up to 20 minutes ahead (or further while preparing)
+  const target=AI.prep?Math.max(AI.prep.seconds,AHEAD_MAX):AHEAD_MAX;
   const busyIdx=new Set();for(const j of AI.inflight.values())if(j.gen===AI.gen)busyIdx.add(j.i);
-  let ahead=0,i=idx;
+  let ahead=0;i=idx;
   while(busyIdx.size<2&&i<sents.length){
-    if(AI.audio.has(i)){ahead+=aiDur(i);if(ahead>AHEAD_MAX)return;i++;continue}
+    if(aiHas(i)){ahead+=aiDur(i);if(ahead>target){aiPrepCheck();return}i++;continue}
     if(busyIdx.has(i)){i++;continue}
-    const id=AI.nextId++;AI.inflight.set(id,{i,gen:AI.gen});busyIdx.add(i);
+    const id=AI.nextId++;AI.inflight.set(id,{i,gen:AI.gen,key:prefix+i});busyIdx.add(i);
     AI.worker.postMessage({type:"gen",id,text:sents[i].text,voice:aiVoice()});i++;
   }
+  if(i>=sents.length&&!busyIdx.size)aiPrepCheck(true);
 }
 function aiCancelQueue(){if(AI.worker)AI.worker.postMessage({type:"cancel"});AI.inflight.clear();AI.gen++}
-function aiClear(){aiCancelQueue();AI.audio.clear();AI.started=false;AI.waiting=false;aiDropSegment()}
+function aiClear(){aiCancelQueue();AI.audio.clear();AI.durs.clear();AI.started=false;AI.waiting=false;aiDropSegment();prepStop(true);if(cur)aiLoadIndex()}
 function aiVoiceChanged(){aiClear()}
 function aiHalt(){AI.waiting=false;if(!AI.el.paused){AI.switching=true;AI.el.pause();AI.switching=false}}
 function aiDropSegment(){if(AI.seg&&AI.seg.url){AI.switching=true;AI.el.removeAttribute("src");try{AI.el.load()}catch(e){}AI.switching=false;URL.revokeObjectURL(AI.seg.url)}AI.seg=null}
 function aiPlayFrom(i,offset){
   AI.started=true;
   if(AI.audio.has(i)){aiStartSegment(i,offset);aiFill();return}
-  let queued=false;for(const j of AI.inflight.values())if(j.gen===AI.gen&&j.i===i)queued=true;
+  let queued=AI.durs.has(i);for(const j of AI.inflight.values())if(j.gen===AI.gen&&j.i===i)queued=true;
   if(!queued)aiCancelQueue();
   AI.waiting=true;AI.waitIdx=i;updatePlayBtn();updateStatus();aiFill();
 }
@@ -1019,7 +1120,7 @@ function syncEngineUI(){
   $("#engSys").setAttribute("aria-checked",String(!ai));$("#engAI").setAttribute("aria-checked",String(ai));
   $("#engNote").textContent=ai?"Natural AI voice: sounds more human and keeps reading with the screen off. Narrators use British AI voices.":"Apple voices: start instantly, but stop when the screen turns off.";
   $("#accIntro").textContent=ai?"Pick a narrator. Each one is a British AI voice at a pace that suits the part.":"Pick a narrator. Each one uses a British, Scottish or Irish voice from your device, set deeper or slower to fit the part.";
-  $("#depthRow").hidden=ai;$("#sysTip").hidden=ai;
+  $("#depthRow").hidden=ai;$("#sysTip").hidden=ai;updatePrepUI();
 }
 $("#engAI").addEventListener("click",()=>{
   if(isAI())return;const prev=settings.voice;if(playing)stop();
@@ -1054,15 +1155,67 @@ $("#aiRemove").addEventListener("click",async e=>{
 });
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#aiSheet").hidden&&AI.state!=="loading")closeAISheet()});
 
+
+/* ---------- Prepare ahead ---------- */
+function prepStart(min){
+  if(!isAI()||AI.state!=="ready"){toast("Turn on the natural AI voice first (Accents → Natural AI voice).",true);return}
+  AI.prep={seconds:min*60,min,startedAt:Date.now()};AI.started=true;
+  keepAwake(true);updatePrepUI();aiFill();
+}
+function prepStop(silent){
+  if(!AI.prep)return;
+  AI.prep=null;if(!playing)keepAwake(false);updatePrepUI();
+  if(!silent)toast("Stopped preparing. What's done so far is saved.");
+}
+function aiPrepCheck(endOfBook){
+  if(!AI.prep)return;
+  const ahead=aiAhead();
+  if(endOfBook||ahead>=AI.prep.seconds){
+    const m=Math.round(ahead/60);AI.prep=null;if(!playing)keepAwake(false);updatePrepUI();
+    toast(endOfBook?`Ready: the rest of this book is prepared (${m} min).`:`Ready: ${m} minutes prepared. Press play anytime.`);
+  }
+}
+function fmtMin(sec){const m=Math.floor(sec/60);return m<1?Math.round(sec)+" sec":m<60?m+" min":Math.floor(m/60)+" h "+(m%60)+" min"}
+function updatePrepUI(){
+  const show=isAI()&&settings.aiInstalled;
+  $("#prepBtn").hidden=!show;
+  const ahead=AI.state==="ready"||AI.durs.size?aiAhead():0;
+  if(AI.prep){
+    const pct=Math.min(100,ahead/AI.prep.seconds*100);
+    $("#prepBtn").classList.add("busy");$("#prepLabel").textContent=Math.floor(pct)+"%";
+    $("#prepBar").style.width=pct.toFixed(1)+"%";
+    $("#prepText").textContent=`Prepared ${fmtMin(ahead)} of ${AI.prep.min>=60?AI.prep.min/60+" h":AI.prep.min+" min"}`;
+  }else{$("#prepBtn").classList.remove("busy");$("#prepLabel").textContent="Prepare"}
+  $("#prepChoices").hidden=!!AI.prep;$("#prepRun").hidden=!AI.prep;
+  $("#prepReady").textContent=ahead>=60?`Ready to play from here: ${fmtMin(ahead)} with ${(AI_VOICES.find(v=>v[0]===aiVoice())||[,"this voice"])[1]}.`:"";
+}
+async function showSpace(){
+  try{const e=await navigator.storage.estimate();$("#prepSpace").textContent=`Earshot is using ${Math.round(e.usage/1048576)} MB on this phone, including the AI voice itself.`}catch(err){$("#prepSpace").textContent=""}
+}
+$("#prepBtn").addEventListener("click",()=>{$("#prepSheet").hidden=false;$("#prepScrim").hidden=false;updatePrepUI();showSpace()});
+const closePrep=()=>{$("#prepSheet").hidden=true;$("#prepScrim").hidden=true};
+$("#prepClose").addEventListener("click",closePrep);$("#prepScrim").addEventListener("click",closePrep);
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#prepSheet").hidden)closePrep()});
+$("#prepSheet").addEventListener("click",e=>{const b=e.target.closest("[data-min]");if(b)prepStart(+b.dataset.min)});
+$("#prepStopBtn").addEventListener("click",()=>prepStop(false));
+$("#prepClear").addEventListener("click",async e=>{
+  const b=e.currentTarget;
+  if(!b.classList.contains("arm")){b.classList.add("arm");b.textContent="Tap again to delete";setTimeout(()=>{b.classList.remove("arm");b.textContent="Delete saved audio"},3000);return}
+  b.classList.remove("arm");b.textContent="Delete saved audio";
+  prepStop(true);await ADB.clear("");AI.durs.clear();
+  for(const k of AI.audio.keys())if(!(AI.seg&&k>=AI.seg.start&&k<=AI.seg.end))AI.audio.delete(k);
+  updatePrepUI();updateStatus();showSpace();toast("Deleted all saved AI audio.");
+});
+
 /* ---------- keep the screen on while reading ---------- */
 let wakeLock=null;
 async function keepAwake(on){
   try{
     if(on&&!wakeLock&&navigator.wakeLock){wakeLock=await navigator.wakeLock.request("screen");wakeLock.addEventListener("release",()=>{wakeLock=null})}
-    else if(!on&&wakeLock){await wakeLock.release();wakeLock=null}
+    else if(!on&&wakeLock&&!playing&&!AI.prep){await wakeLock.release();wakeLock=null}
   }catch(e){wakeLock=null}
 }
-document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&playing)keepAwake(true)});
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&(playing||AI.prep))keepAwake(true)});
 
 /* ---------- boot ---------- */
 setSize(settings.size);
