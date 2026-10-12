@@ -482,8 +482,8 @@ function loadVoices(){
   const keys=Object.keys(groups).sort((a,b)=>(b===lang)-(a===lang)||a.localeCompare(b));
   sel.textContent="";
   const ag=document.createElement("optgroup");ag.label="Natural AI voices (keep reading with the screen off)";
-  for(const [id,name,g,acc] of AI_VOICES){
-    const o=document.createElement("option");o.value="ai:"+id;o.textContent=name+" · "+(acc==="gb"?"British":"American")+" AI"+(settings.aiInstalled?"":" (download)");
+  for(const [id,name,g,acc,top] of AI_VOICES){
+    const o=document.createElement("option");o.value="ai:"+id;o.textContent=name+" · "+(acc==="gb"?"British":"American")+(top?" ★":"")+(settings.aiInstalled?"":" (download)");
     if(settings.voice===o.value)o.selected=true;ag.appendChild(o);
   }
   sel.appendChild(ag);
@@ -768,9 +768,12 @@ addEventListener("drop",e=>{e.preventDefault();dragDepth=0;$("#drop").hidden=tru
 
 
 /* ---------- natural AI voice (Kokoro, open source, runs on the device) ---------- */
-const AI_VOICES=[["bf_emma","Emma","f","gb"],["bf_isabella","Isabella","f","gb"],["bf_alice","Alice","f","gb"],["bf_lily","Lily","f","gb"],
-  ["bm_george","George","m","gb"],["bm_fable","Fable","m","gb"],["bm_lewis","Lewis","m","gb"],["bm_daniel","Daniel","m","gb"],
-  ["af_heart","Heart","f","us"],["af_bella","Bella","f","us"],["am_michael","Michael","m","us"],["am_fenrir","Fenrir","m","us"]];
+// Kokoro's English voices, best-sounding first within each accent (from the model's own quality grades).
+const AI_VOICES=[["bf_emma","Emma","f","gb",1],["bm_george","George","m","gb"],["bm_fable","Fable","m","gb"],["bf_isabella","Isabella","f","gb"],
+  ["bm_lewis","Lewis","m","gb"],["bf_alice","Alice","f","gb"],["bf_lily","Lily","f","gb"],["bm_daniel","Daniel","m","gb"],
+  ["af_heart","Heart","f","us",1],["af_bella","Bella","f","us",1],["af_nicole","Nicole (soft)","f","us"],["af_aoede","Aoede","f","us"],
+  ["af_kore","Kore","f","us"],["af_sarah","Sarah","f","us"],["am_fenrir","Fenrir","m","us"],["am_michael","Michael","m","us"],
+  ["am_puck","Puck","m","us"],["af_nova","Nova","f","us"],["af_alloy","Alloy","f","us"]];
 const HF_BASE="https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/";
 const AHEAD_MAX=20*60;           // prepare up to 20 minutes of audio ahead
 const AI={state:"off",worker:null,device:"",audio:new Map(),inflight:new Map(),nextId:1,gen:0,el:new Audio(),seg:null,
@@ -779,7 +782,7 @@ AI.el.preload="auto";
 try{AI.el.preservesPitch=true;AI.el.webkitPreservesPitch=true}catch(e){}
 function isAI(){return String(settings.voice||"").startsWith("ai:")}
 const IS_WEBKIT=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1)||/^((?!chrome|chromium|android|crios|fxios|edg).)*safari/i.test(navigator.userAgent);
-const CAN_FAST=("gpu" in navigator)&&!IS_WEBKIT;
+const CAN_FAST=false;
 if(!CAN_FAST&&settings.aiMode==="fast"){settings.aiMode="standard";try{localStorage.setItem("earshot-settings",JSON.stringify(settings))}catch(e){}}
 function aiVoice(){return String(settings.voice).slice(3)||"bf_emma"}
 
@@ -814,6 +817,7 @@ function aiLoad(mode,fromSheet){
 }
 function aiFail(msg){
   aiLog("FAILED: "+msg);$("#aiDiag").open=true;
+  const wanted=AI.playWhenReady||(playing&&isAI());
   clearTimeout(AI.watch);AI.slow=false;
   AI.state="failed";AI.playWhenReady=false;if(AI.worker){AI.worker.terminate();AI.worker=null}
   const wasInstalling=!settings.aiInstalled;
@@ -823,6 +827,10 @@ function aiFail(msg){
   if($("#aiSheet").hidden){$("#aiSheet").hidden=false;$("#aiScrim").hidden=false}
   if(playing)stop();
   AI.state="off";updateAIUI();
+  if(wanted&&synth&&voices.length&&isAI()){
+    settings.voice=settings.lastSys||"";saveSettings();loadVoices();
+    setTimeout(()=>toast("The AI voice couldn't start, so Earshot switched to an Apple voice. Tap play to keep listening.",true),7200);
+  }
 }
 function aiMsg(e){
   const m=e.data;

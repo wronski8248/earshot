@@ -1,14 +1,18 @@
 // Earshot AI voice engine. Runs the open-source Kokoro model on the phone, off the main page.
 import "./safari-fixes.js"; // must load first
-import { KokoroTTS, env } from "./kokoro.web.js";
+import { KokoroTTS, env } from "./kokoro-engine.js";
 
 const T0 = performance.now();
 const sec = () => ((performance.now() - T0) / 1000).toFixed(1) + "s";
 function log(msg) { self.postMessage({ type: "log", msg: sec() + "  " + msg }); }
-log("engine code loaded" + (self.__earshotPatched ? " (Safari patch applied)" : ""));
+log("engine code loaded: transformers.js " + env.version + (self.__earshotPatched ? " (Safari patch applied)" : ""));
 let beat = setInterval(() => self.postMessage({ type: "tick" }), 2000);
 
-env.wasmPaths = new URL("./", self.location.href).href;
+// Run the engine from this site's own copy of ONNX Runtime (CPU build: the most dependable one on iPhone).
+const here = new URL("./", self.location.href).href;
+env.backends.onnx.wasm.wasmPaths = { mjs: here + "ort-wasm-simd-threaded.mjs", wasm: here + "ort-wasm-simd-threaded.wasm" };
+env.backends.onnx.wasm.numThreads = 1;
+env.backends.onnx.wasm.proxy = false;
 const MODEL = "onnx-community/Kokoro-82M-v1.0-ONNX";
 
 let tts = null;
@@ -37,15 +41,7 @@ async function load({ dtype, device }) {
   };
   const t0 = performance.now();
   log("starting: " + dtype + " on " + device + ", threads: " + (self.crossOriginIsolated ? "multi" : "single"));
-  try {
-    tts = await KokoroTTS.from_pretrained(MODEL, { dtype, device, progress_callback });
-  } catch (e) {
-    if (device === "webgpu") {
-      post({ type: "note", message: "The graphics chip mode didn't start, so Earshot is using standard mode." });
-      tts = await KokoroTTS.from_pretrained(MODEL, { dtype: "q8", device: "wasm", progress_callback });
-      device = "wasm";
-    } else throw e;
-  }
+  tts = await KokoroTTS.from_pretrained(MODEL, { dtype, device, progress_callback });
   // warm up so the first real sentence starts quickly
   log("voice engine created");
   post({ type: "stage", stage: "testing" });

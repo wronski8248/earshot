@@ -1,6 +1,6 @@
 // Earshot offline support.
 // Keeps a copy of the app on the phone so it opens without internet.
-const VERSION = "earshot-v6";
+const VERSION = "earshot-v7";
 const APP_FILES = [
   "./", "index.html", "manifest.webmanifest",
   "jszip.min.js", "pdf.min.js", "pdf.worker.min.js",
@@ -9,7 +9,8 @@ const APP_FILES = [
   "safari-fixes.js", "voice-worker.js"
 ];
 // Large files for the AI voice: saved the first time they're used, then never re-downloaded.
-const BIG = /\.(wasm|mjs)$|kokoro\.web\.js$/;
+const BIG = /\.(wasm|mjs)$|kokoro-engine\.js$/;
+const RUNTIME = "earshot-ai-runtime-2";
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(APP_FILES.map(u => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
@@ -17,7 +18,7 @@ self.addEventListener("install", e => {
 
 self.addEventListener("activate", e => {
   e.waitUntil((async () => {
-    const keep = new Set([VERSION, "earshot-ai-runtime", "transformers-cache", "kokoro-voices"]);
+    const keep = new Set([VERSION, RUNTIME, "transformers-cache", "kokoro-voices"]);
     for (const k of await caches.keys()) if (!keep.has(k)) await caches.delete(k);
     await self.clients.claim();
   })());
@@ -33,7 +34,7 @@ self.addEventListener("fetch", e => {
   if (BIG.test(url.pathname)) {
     // cache first: these files are big and only change when the app is updated
     e.respondWith((async () => {
-      const c = await caches.open("earshot-ai-runtime");
+      const c = await caches.open(RUNTIME);
       const key = req.url;
       let res = await c.match(key);
       if (!res) {
