@@ -154,6 +154,20 @@ main{grid-row:1;grid-column:2;overflow-y:auto;min-width:0;position:relative;scro
   #prepBtn,#accBtn{padding:0 10px}
   #presets{grid-template-columns:minmax(0,1fr)}#acc{right:16px;left:16px;width:auto}}
 
+/* Pronunciation fixes */
+.pron{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.pron h4{margin:0;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.pron .engnote{margin:0}
+#pronForm{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:6px}
+#pronForm input{min-width:0;height:34px;border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:0 9px;font-size:16px}
+#pronList{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;max-height:180px;overflow-y:auto}
+#pronList li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:4px 2px;border-bottom:1px solid var(--line);font-size:13.5px}
+#pronList li span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#pronList li i{font-style:normal;color:var(--muted)}
+#pronList button{border:0;background:none;color:var(--accent);font-weight:600;padding:4px 6px;border-radius:6px}
+#pronList button.x{color:var(--muted)}
+#pronGot{align-self:flex-start}
+
 /* Voice type switch */
 .seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:11px;background:var(--paper);border:1px solid var(--line);margin-bottom:10px}
 .seg button{border:0;background:none;border-radius:8px;padding:8px 6px;font-weight:600;font-size:13px;color:var(--muted)}
@@ -301,7 +315,18 @@ main{grid-row:1;grid-column:2;overflow-y:auto;min-width:0;position:relative;scro
   </div>
   <div id="presets"></div>
   <div class="prow2" id="depthRow"><label for="pitch">Depth</label><input type="range" id="pitch" min="0.5" max="1.5" step="0.05" value="1"><span id="pitchVal">normal</span></div>
-  <p class="tip" id="sysTip"><b>Only a few accents showing?</b> Your browser can use only the voices installed on your device. In Microsoft Edge, the free “Natural” voices Ryan, Thomas, Sonia and Libby (UK) and Connor and Emily (Ireland) sound the most lifelike. On an iPhone or Mac, go to Settings → Accessibility → Spoken Content → Voices → English and download the UK, Ireland and Scotland voices, then reload this page.</p>
+  <div class="pron">
+    <h4>Pronunciation fixes</h4>
+    <p class="engnote">Teach the voice how to say names. Type the word, then how it sounds.</p>
+    <form id="pronForm" autocomplete="off">
+      <input id="pronFrom" type="text" placeholder="Word, e.g. Cersei" aria-label="Word">
+      <input id="pronTo" type="text" placeholder="Say it as, e.g. sir-see" aria-label="Say it as">
+      <button class="ib" type="submit">Add</button>
+    </form>
+    <ul id="pronList"></ul>
+    <button class="ib" id="pronGot" type="button">Add Game of Thrones names</button>
+  </div>
+  <p class="tip" id="sysTip"><b>Want more natural Apple voices?</b> On iPhone, go to Settings → Accessibility → Spoken Content → Voices → English and download voices marked <b>Premium</b> (best) or <b>Enhanced</b>, such as Ava or Zoe (US) and Jamie or Serena (UK). Then reopen Earshot. The Voice menu marks them, and Premium ones get a ★.</p>
 </section>
 
 <div id="aiScrim" hidden></div>
@@ -379,7 +404,7 @@ const synth=window.speechSynthesis||null;
 if(window.pdfjsLib){try{pdfjsLib.GlobalWorkerOptions.workerSrc="pdf.worker.min.js"}catch(e){}}
 
 /* ---------- settings ---------- */
-const settings=Object.assign({rate:1,voice:"",size:20,last:"",pitch:1,preset:"",aiInstalled:false,aiMode:"standard",lastAI:"bf_emma",lastSys:"",prepBook:""},(()=>{try{return JSON.parse(localStorage.getItem("earshot-settings")||"{}")}catch(e){return {}}})());
+const settings=Object.assign({rate:1,voice:"",size:20,last:"",pitch:1,preset:"",aiInstalled:false,aiMode:"standard",lastAI:"bf_emma",lastSys:"",prepBook:"",pron:[],upgraded:false,tipShown:false},(()=>{try{return JSON.parse(localStorage.getItem("earshot-settings")||"{}")}catch(e){return {}}})());
 function saveSettings(){try{localStorage.setItem("earshot-settings",JSON.stringify(settings))}catch(e){}}
 
 /* ---------- storage (IndexedDB, per browser) ---------- */
@@ -458,6 +483,35 @@ function chunk(s){
   return out.flatMap(c=>c.length>300?c.match(/.{1,220}(\s|$)/g):[c]);
 }
 
+/* ---------- making book text sound natural when spoken ---------- */
+function romanToInt(r){const m={I:1,V:5,X:10,L:50,C:100,D:500,M:1000};let n=0;r=r.toUpperCase();
+  for(let i=0;i<r.length;i++){const a=m[r[i]],b=m[r[i+1]]||0;if(!a)return null;n+=a<b?-a:a}return n}
+function escRe(x){return x.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}
+let pronCache=null;
+function applyPron(t){
+  const list=settings.pron||[];if(!list.length)return t;
+  if(!pronCache||pronCache.src!==list){pronCache={src:list,rules:list.filter(r=>r[0]&&r[1]).map(([a,b])=>[new RegExp("(^|[^\\p{L}])("+escRe(a)+")(?![\\p{L}])","giu"),b])}}
+  for(const [re,b] of pronCache.rules)t=t.replace(re,(m,pre)=>pre+b);
+  return t;
+}
+function speakable(t,isHeading){
+  let x=t;
+  x=x.replace(/https?:\/\/\S+|www\.\S+/gi," link ");                          // web addresses
+  x=x.replace(/\[\d{1,3}\]/g,"");                                              // [12] references
+  x=x.replace(/([a-z.,;:!?)\]”"’'])\d{1,3}(?=\s|$)/g,"$1");                    // footnote numbers stuck to words
+  x=x.replace(/(\d)\s*[–—-]\s*(\d)/g,"$1 to $2");                             // 1990–1995
+  x=x.replace(/\s*(?:—|–|--)\s*/g,", ");                                         // dashes become a short pause
+  x=x.replace(/\.{3,}/g,"…").replace(/([!?])\1+/g,"$1");
+  x=x.replace(/\s&\s/g," and ");
+  x=x.replace(/\b(Chapter|Book|Part|Volume|Act|Section|Canto)\s+([IVXLCDM]+)\b/gi,(m,w,r)=>{const n=romanToInt(r);return n?w+" "+n:m});
+  if(isHeading&&/^[IVXLCDM]+\.?$/i.test(x.trim())){const n=romanToInt(x.trim().replace(".",""));if(n)x="Chapter "+n}
+  x=x.replace(/\b[A-Z][A-Z'’]*(?:[\s,]+[A-Z][A-Z'’]*)+\b/g,w=>/[A-Z]{4}/.test(w)?w.toLowerCase():w);   // SHOUTED phrases
+  x=x.replace(/\b[A-Z][A-Z'’]{3,}\b/g,w=>w.toLowerCase());                     // SHOUTED words, not short acronyms like FBI
+  if(/^\s*["“‘(]*[A-Z]/.test(t))x=x.replace(/^(\s*["“‘(]*)([a-z])/,(m,a,b)=>a+b.toUpperCase());   // keep a capital that was there
+  if(/^[\s*#~•·_=+-]+$/.test(x))x="";                                             // *** scene breaks
+  return applyPron(x).replace(/\s+/g," ").trim();
+}
+
 /* ---------- rendering ---------- */
 function render(book){
   const art=$("#text");art.textContent="";sents=[];wordsBefore=[];totalWords=0;
@@ -501,22 +555,53 @@ function updateStatus(){
 
 /* ---------- speech ---------- */
 function pickVoice(){return voices.find(v=>v.voiceURI===settings.voice)||null}
+// Apple voices read a whole paragraph at a time (up to ~500 letters), which keeps their
+// rhythm and intonation flowing instead of restarting at every sentence.
+function buildGroup(start){
+  const par=sents[start].el.parentNode,isH=/^H\d$/.test(par.nodeName);
+  let end=start,len=sents[start].text.length;
+  while(end+1<sents.length&&sents[end+1].el.parentNode===par&&len+sents[end+1].text.length<500){end++;len+=sents[end].text.length}
+  let text="";const map=[];
+  for(let i=start;i<=end;i++){
+    const sp=speakable(sents[i].text,isH);
+    map.push({i,from:text.length,to:text.length+sp.length,sp});
+    text+=sp+" ";
+  }
+  return {start,end,text:text.trim(),map,par};
+}
+function markWord(i,sp,ci,len){
+  const s=sents[i];if(!s)return;const t=s.text;
+  // the spoken text can differ slightly from the page (clean-up, pronunciations); map by position
+  let st=sp===t?ci:Math.round(ci*t.length/Math.max(1,sp.length));
+  while(st>0&&/\S/.test(t[st-1]))st--;
+  const m=t.slice(st).match(/^\S+/);const L=sp===t&&len?len:(m?m[0].length:0);
+  if(L)s.el.innerHTML=esc(t.slice(0,st))+"<mark>"+esc(t.slice(st,st+L))+"</mark>"+esc(t.slice(st+L));
+}
 function speakCurrent(){
-  const my=++token;const s=sents[idx];if(!s){stop();return}
+  const my=++token;if(!sents[idx]){stop();return}
   setIdx(idx);
-  const u=new SpeechSynthesisUtterance(s.text);utt=u;
+  const g=buildGroup(idx);
+  const next=()=>{
+    if(my!==token)return;
+    if(sents[idx])sents[idx].el.textContent=sents[idx].text;
+    if(g.end>=sents.length-1){stop();toast("Finished reading.");return}
+    const newPar=sents[g.end+1].el.parentNode!==g.par;
+    setIdx(g.end+1);
+    if(newPar)setTimeout(()=>{if(my===token&&playing)speakCurrent()},280);else speakCurrent();
+  };
+  if(!g.text){setTimeout(next,400);return}                       // a scene break: just a pause
+  const u=new SpeechSynthesisUtterance(g.text);utt=u;
   const v=pickVoice();if(v){u.voice=v;u.lang=v.lang}
   u.rate=settings.rate;u.pitch=settings.pitch;
   u.onboundary=e=>{
     if(my!==token||(e.name&&e.name!=="word"))return;
-    const t=s.text,st=e.charIndex;let len=e.charLength;
-    if(!len){const m=t.slice(st).match(/^\S+/);len=m?m[0].length:0}
-    if(len)s.el.innerHTML=esc(t.slice(0,st))+"<mark>"+esc(t.slice(st,st+len))+"</mark>"+esc(t.slice(st+len));
+    const ci=e.charIndex;const part=g.map.find(x=>ci>=x.from&&ci<x.to+1)||g.map[g.map.length-1];
+    if(part.i!==idx)setIdx(part.i);
+    markWord(part.i,part.sp,Math.max(0,ci-part.from),e.charLength);
   };
-  u.onend=()=>{if(my!==token)return;s.el.textContent=s.text;
-    if(idx<sents.length-1){idx++;speakCurrent()}else{stop();toast("Finished reading.")}};
+  u.onend=next;
   u.onerror=e=>{if(my!==token)return;if(e.error==="interrupted"||e.error==="canceled")return;
-    s.el.textContent=s.text;stop();toast("The voice stopped unexpectedly ("+e.error+"). Try another voice from the Voice menu.",true)};
+    if(sents[idx])sents[idx].el.textContent=sents[idx].text;stop();toast("The voice stopped unexpectedly ("+e.error+"). Try another voice from the Voice menu.",true)};
   synth.speak(u);
 }
 function play(){
@@ -542,12 +627,23 @@ function stop(){playing=false;keepAwake(false);token++;if(synth)synth.cancel();A
 function speakFrom(i){setIdx(i);play()}
 function updatePlayBtn(){$("#play").classList.toggle("wait",playing&&isAI()&&AI.waiting);if("mediaSession" in navigator)try{navigator.mediaSession.playbackState=playing?"playing":"paused"}catch(e){}$("#icPlay").hidden=playing;$("#icPause").hidden=!playing;$("#play").setAttribute("aria-label",playing?"Pause":"Play")}
 
+// Apple marks voice quality in the voice's ID: premium (best), enhanced, compact (basic).
+const NOVELTY=/(Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Deranged|Good News|Hysterical|Jester|Junior|Kathy|Organ|Pipe Organ|Princess|Ralph|Superstar|Trinoids|Whisper|Wobble|Zarvox|Fred)$/;
+function voiceTier(v){
+  if(!v)return 0;const u=(v.voiceURI||"")+" "+v.name;
+  if(/premium/i.test(u))return 3;
+  if(/enhanced|neural|natural|online/i.test(u))return 2;
+  if(/eloquence|speech\.synthesis\.voice|super-?compact/i.test(u))return 0;
+  return 1;
+}
+const TIER_NAME=["basic","","Enhanced","Premium"];
 function loadVoices(){
   const sel=$("#voice");
-  voices=synth?synth.getVoices():[];
+  voices=synth?synth.getVoices().filter(v=>!NOVELTY.test(v.name)||v.voiceURI===settings.voice):[];
   const lang=(navigator.language||"en").slice(0,2).toLowerCase();
-  const score=v=>(/natural|neural|premium|enhanced|online/i.test(v.name)?4:0)+(/google|siri|samantha|aria|jenny|guy/i.test(v.name)?2:0)+(v.lang.toLowerCase().startsWith(lang)?10:0)+(v.default?1:0);
+  const score=v=>voiceTier(v)*20+(v.lang.toLowerCase().startsWith(lang)?10:0)+(v.default?1:0);
   if(!isAI()&&!pickVoice()){const best=[...voices].sort((a,b)=>score(b)-score(a))[0];settings.voice=best?best.voiceURI:""}
+  upgradeVoiceOnce(score,lang);
   let dn=null;try{dn=new Intl.DisplayNames([navigator.language||"en"],{type:"language"})}catch(e){try{dn=new Intl.DisplayNames(["en"],{type:"language"})}catch(e2){}}
   const groups={};
   for(const v of voices){const k=v.lang.slice(0,2).toLowerCase();(groups[k]=groups[k]||[]).push(v)}
@@ -562,13 +658,28 @@ function loadVoices(){
   for(const k of keys){
     const og=document.createElement("optgroup");let name=k;try{name=dn?dn.of(k):k}catch(e){}og.label=name;
     for(const v of groups[k].sort((a,b)=>score(b)-score(a)||a.name.localeCompare(b.name))){
-      const o=document.createElement("option");o.value=v.voiceURI;o.textContent=v.name.replace(/^Microsoft\s+/,"").replace(/\s+Online\s+\(Natural\)/," (Natural)")+(v.lang.length>2?" · "+v.lang:"");
+      const tier=voiceTier(v);
+      const o=document.createElement("option");o.value=v.voiceURI;o.textContent=v.name.replace(/^Microsoft\s+/,"").replace(/\s+Online\s+\(Natural\)/,"").replace(/\s*\((Premium|Enhanced)\)/i,"")+(tier>=2?" · "+TIER_NAME[tier]+(tier===3?" ★":""):"")+(v.lang.length>2?" · "+(/sct/i.test(v.lang)?"Scotland":/-IE/i.test(v.lang)?"Ireland":/-IN/i.test(v.lang)?"India":/-AU/i.test(v.lang)?"Australia":/-ZA/i.test(v.lang)?"South Africa":v.lang.slice(3,5).toUpperCase()):"");
       if(v.voiceURI===settings.voice)o.selected=true;og.appendChild(o);
     }
     sel.appendChild(og);
   }
   if(!voices.length&&!isAI()){const o=document.createElement("option");o.disabled=true;o.textContent=synth?"Loading built-in voices…":"No built-in voices in this browser";sel.appendChild(o);o.selected=true}
   renderPresets();syncEngineUI();
+}
+
+// Once: if a basic voice is selected but a Premium/Enhanced one is installed, switch to it.
+function upgradeVoiceOnce(score,lang){
+  if(!voices.length||isAI())return;
+  const curV=pickVoice(),inLang=voices.filter(v=>v.lang.toLowerCase().startsWith((curV?curV.lang:lang).slice(0,2).toLowerCase()));
+  const best=[...inLang].sort((a,b)=>score(b)-score(a))[0];
+  if(!settings.upgraded&&best&&voiceTier(best)>=2&&voiceTier(best)>voiceTier(curV)){
+    settings.upgraded=true;settings.voice=best.voiceURI;settings.lastSys=best.voiceURI;saveSettings();
+    setTimeout(()=>toast(`Switched to ${best.name.replace(/\s*\(.*\)/,"")} (${TIER_NAME[voiceTier(best)]}), the most natural voice on your phone.`),1500);
+  }else if(!settings.tipShown&&voiceTier(best)<2&&/iP(hone|ad)|Mac/.test(navigator.userAgent)){
+    settings.tipShown=true;saveSettings();
+    setTimeout(()=>toast("For a much more natural voice, download a Premium one: Settings → Accessibility → Spoken Content → Voices → English, then pick a voice marked Premium (Ava and Zoe are good). Reopen Earshot afterwards.",false,12000),2500);
+  }
 }
 
 /* ---------- Westeros accent presets ---------- */
@@ -597,7 +708,7 @@ function matchVoice(p){
   for(const v of voices){
     const a=accentOf(v);const ai=p.acc.indexOf(a);if(ai<0)continue;
     const g=genderOf(v);
-    let s=100-ai*20+(p.g==="any"?20:g===p.g?30:g===null?8:-40)+(/natural|neural|premium|enhanced|online/i.test(v.name)?15:0);
+    let s=100-ai*20+(p.g==="any"?20:g===p.g?30:g===null?8:-40)+voiceTier(v)*12;
     if(s>bs){bs=s;best=v}
   }
   return best}
@@ -774,7 +885,7 @@ function parseTxt(t){return {title:"",author:"",blocks:t.split(/\r?\n\s*\r?\n/).
 
 /* ---------- toast ---------- */
 let toastTimer=0;
-function toast(msg,err){const t=$("#toast");clearTimeout(toastTimer);t.className=err?"err":"";t.textContent=msg;t.hidden=false;toastTimer=setTimeout(()=>t.hidden=true,err?7000:3200)}
+function toast(msg,err,ms){const t=$("#toast");clearTimeout(toastTimer);t.className=err?"err":"";t.textContent=msg;t.hidden=false;toastTimer=setTimeout(()=>t.hidden=true,ms||(err?7000:3200))}
 function busy(msg){const t=$("#toast");clearTimeout(toastTimer);t.className="";t.innerHTML='<span class="spin"></span><span></span>';t.lastChild.textContent=msg;t.hidden=false;toastTimer=setTimeout(()=>t.hidden=true,20000)}
 
 /* ---------- controls ---------- */
@@ -988,7 +1099,8 @@ async function aiFillOnce(){
     if(!whole&&ahead>target)return;
     if(busyIdx.has(i)){counting=false;continue}
     const id=AI.nextId++;AI.inflight.set(id,{i,gen:AI.gen,key:prefix+i});busyIdx.add(i);
-    AI.worker.postMessage({type:"gen",id,text:sents[i].text,voice:aiVoice(),gap:aiGap(i)});
+    const sp=speakable(sents[i].text,/^H\d$/.test(sents[i].el.parentNode.nodeName))||".";
+    AI.worker.postMessage({type:"gen",id,text:sp,voice:aiVoice(),gap:aiGap(i)});
   }
   if(k>=n&&!busyIdx.size)aiPrepCheck(true);
   else if(whole)aiPrepCheck(false);
@@ -1163,6 +1275,42 @@ $("#aiRemove").addEventListener("click",async e=>{
 });
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#aiSheet").hidden&&AI.state!=="loading")closeAISheet()});
 
+
+/* ---------- pronunciation fixes ---------- */
+const GOT_NAMES=[["Daenerys","duh-nair-iss"],["Targaryen","tar-gair-ee-en"],["Cersei","sir-see"],["Jaime","jay-mee"],["Tyrion","tir-ee-un"],
+  ["Theon","thee-on"],["Ygritte","ee-grit"],["Brienne","bree-en"],["Arya","ar-yuh"],["Maester","my-ster"],["Maesters","my-sters"],["Khaleesi","kuh-lee-see"],
+  ["Dothraki","doth-rah-kee"],["Drogo","droh-go"],["Ser","sir"],["Westeros","west-er-oss"],["Essos","ess-oss"],["Meereen","mih-reen"],
+  ["Qarth","karth"],["Varys","vair-iss"],["Baelish","bay-lish"],["Rhaegar","ray-gar"],["Aegon","ee-gon"],["Viserys","vih-seer-iss"],
+  ["Missandei","miss-an-day"],["Jojen","joe-jen"],["Sandor","san-dor"],["Daario","dah-ree-oh"],["Melisandre","mel-ih-san-druh"],["Rhllor","ruh-lor"],["R'hllor","ruh-lor"]];
+function renderPron(){
+  const ul=$("#pronList");ul.textContent="";
+  (settings.pron||[]).forEach(([a,b],n)=>{
+    const li=document.createElement("li");
+    li.innerHTML='<span></span><button type="button" class="t">Try</button><button type="button" class="x" aria-label="Remove">✕</button>';
+    li.querySelector("span").innerHTML="";li.querySelector("span").append(a," ",Object.assign(document.createElement("i"),{textContent:"→ "+b}));
+    li.querySelector(".t").onclick=()=>sayTest(a);
+    li.querySelector(".x").onclick=()=>{settings.pron.splice(n,1);settings.pron=[...settings.pron];saveSettings();renderPron()};
+    ul.appendChild(li);
+  });
+  $("#pronGot").hidden=(settings.pron||[]).some(([a])=>a==="Daenerys");
+}
+function sayTest(word){
+  const t=speakable(word+".");
+  if(isAI()&&AI.state==="ready"&&!playing){aiCancelQueue();const id=AI.nextId++;AI.previewId=id;AI.inflight.set(id,{i:-1,gen:-1});AI.worker.postMessage({type:"gen",id,text:t,voice:aiVoice()});return}
+  if(synth&&!playing){synth.cancel();const u=new SpeechSynthesisUtterance(t);const v=pickVoice();if(v){u.voice=v;u.lang=v.lang}u.rate=settings.rate;synth.speak(u)}
+}
+$("#pronForm").addEventListener("submit",e=>{
+  e.preventDefault();const a=$("#pronFrom").value.trim(),b=$("#pronTo").value.trim();
+  if(!a||!b){toast("Type both the word and how it should sound.",true);return}
+  settings.pron=[...(settings.pron||[]).filter(r=>r[0].toLowerCase()!==a.toLowerCase()),[a,b]];saveSettings();
+  $("#pronFrom").value="";$("#pronTo").value="";renderPron();sayTest(a);
+});
+$("#pronGot").addEventListener("click",()=>{
+  const have=new Set((settings.pron||[]).map(r=>r[0].toLowerCase()));
+  settings.pron=[...(settings.pron||[]),...GOT_NAMES.filter(r=>!have.has(r[0].toLowerCase()))];saveSettings();renderPron();
+  toast("Added "+GOT_NAMES.length+" Game of Thrones names. Change any of them if they still sound off.");
+});
+renderPron();
 
 /* ---------- Prepare ahead ---------- */
 function prepStart(min,resumed){
