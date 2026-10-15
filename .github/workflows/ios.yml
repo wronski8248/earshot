@@ -35,12 +35,12 @@ jobs:
           SHA=4e9ecdf03b8b6cf906070390237feda473dc13327cb8d56a43deaa374c02acd8
           ok=0
           if curl -fL --retry 3 -o kokoro-v1_0.safetensors "https://media.githubusercontent.com/media/mlalma/KokoroTestApp/main/Resources/kokoro-v1_0.safetensors"; then
-            echo "$SHA  kokoro-v1_0.safetensors" | shasum -a 256 -c && ok=1
+            echo "$SHA  kokoro-v1_0.safetensors" | shasum -a 256 -c && ok=1 && echo "::notice title=Voice model::GitHub copy, fingerprint matches"
           fi
           if [ "$ok" != 1 ]; then
             echo "GitHub copy unavailable, trying Hugging Face"
             curl -fL --retry 3 -o kokoro-v1_0.safetensors "https://huggingface.co/prince-canuma/Kokoro-82M/resolve/main/kokoro-v1_0.safetensors"
-            shasum -a 256 kokoro-v1_0.safetensors
+            echo "::warning title=Voice model::Used the Hugging Face copy: $(shasum -a 256 kokoro-v1_0.safetensors)"
           fi
           curl -fL --retry 3 -o voices.npz "https://raw.githubusercontent.com/mlalma/KokoroTestApp/main/Resources/voices.npz"
           ls -la
@@ -71,6 +71,17 @@ jobs:
           mkdir -p Payload && cp -R "$APP" Payload/
           zip -qry Earshot.ipa Payload
           ls -la Earshot.ipa
+
+      - name: Check what's inside the app
+        run: |
+          cd ios
+          APP=Payload/Earshot.app
+          echo "::notice title=Model files::$(ls -la $APP/Model | awk 'NR>1{print $5, $9}' | tr '\n' ' ')"
+          echo "::notice title=Metal shaders::$(find $APP -name '*.metallib' | sed 's#.*/Earshot.app/##' | tr '\n' ' ')"
+          echo "::notice title=Frameworks::$(ls $APP/Frameworks 2>/dev/null | tr '\n' ' ')"
+          echo "::notice title=Resource bundles::$(find $APP -name '*.bundle' -maxdepth 3 | sed 's#.*/Earshot.app/##' | tr '\n' ' ')"
+          echo "::notice title=Size::app $(du -sh $APP | cut -f1), ipa $(du -h Earshot.ipa | cut -f1)"
+          echo "::notice title=Min iOS::$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' $APP/Info.plist)"
 
       - name: Publish as a download
         env:
