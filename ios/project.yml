@@ -1,0 +1,59 @@
+# Earshot for iPhone. GitHub's Mac build servers turn this into an Xcode project (XcodeGen) and build it.
+name: Earshot
+options:
+  bundleIdPrefix: io.github.wronski8248
+  deploymentTarget:
+    iOS: "18.0"
+packages:
+  KokoroSwift:
+    url: https://github.com/mlalma/kokoro-ios
+    exactVersion: 1.0.11
+  MLXUtilsLibrary:
+    url: https://github.com/mlalma/MLXUtilsLibrary.git
+    exactVersion: 0.0.6
+  mlx-swift:
+    url: https://github.com/ml-explore/mlx-swift
+    exactVersion: 0.30.2
+targets:
+  Earshot:
+    type: application
+    platform: iOS
+    sources:
+      - path: Earshot
+        excludes:
+          - "Model/**"
+      - path: Earshot/Model
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: KokoroSwift
+      - package: MLXUtilsLibrary
+      - package: mlx-swift
+        product: MLX
+    info:
+      path: Earshot/Info.plist
+      properties:
+        CFBundleDisplayName: Earshot
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        LSRequiresIPhoneOS: true
+        UILaunchScreen: {}
+        UIBackgroundModes: [audio]
+        WKAppBoundDomains: [wronski8248.github.io]
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        ITSAppUsesNonExemptEncryption: false
+        UIFileSharingEnabled: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.wronski8248.earshot
+        PRODUCT_NAME: Earshot
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_BITCODE: NO
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGN_IDENTITY: ""
+        DEVELOPMENT_TEAM: ""

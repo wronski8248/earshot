@@ -970,6 +970,34 @@ const CAN_FAST=false;
 if(!CAN_FAST&&settings.aiMode==="fast"){settings.aiMode="standard";try{localStorage.setItem("earshot-settings",JSON.stringify(settings))}catch(e){}}
 function aiVoice(){return String(settings.voice).slice(3)||"bf_emma"}
 
+// Inside the Earshot iPhone app, the AI voice runs natively (much faster). This object behaves
+// like the web voice worker so the rest of the app doesn't need to know the difference.
+const NATIVE=!!(window.__EARSHOT_NATIVE__&&window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.earshot);
+function nativePost(m){try{window.webkit.messageHandlers.earshot.postMessage(m)}catch(e){}}
+function NativeVoice(){
+  const me=this,gaps=new Map();
+  this.onmessage=null;this.onerror=null;
+  const enc=new Worker("mp3-worker.js",{type:"module"});
+  enc.onmessage=e=>me.onmessage&&me.onmessage({data:e.data});
+  enc.onerror=e=>me.onerror&&me.onerror(e);
+  window.__earshotNative=m=>{
+    if(m.type==="pcm"){
+      const bin=atob(m.b64),u8=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
+      const pcm=new Int16Array(u8.buffer),gap=gaps.get(m.id)||0;gaps.delete(m.id);
+      enc.postMessage({id:m.id,pcm,rate:m.rate,gap,ms:m.ms},[pcm.buffer]);
+    }else me.onmessage&&me.onmessage({data:m});
+  };
+  this.postMessage=msg=>{
+    if(msg.type==="load")nativePost({cmd:"load"});
+    else if(msg.type==="gen"){gaps.set(msg.id,msg.gap||0);nativePost({cmd:"gen",id:msg.id,text:msg.text,voice:msg.voice})}
+    else if(msg.type==="cancel"){gaps.clear();nativePost({cmd:"cancel"})}
+  };
+  this.terminate=()=>{enc.terminate()};
+}
+if(NATIVE){settings.aiInstalled=true;
+  if(!settings.nativeIntro){settings.nativeIntro=true;if(!String(settings.voice).startsWith("ai:"))settings.voice="ai:"+(settings.lastAI||"bf_emma")}
+  saveSettings()}
+
 function aiEnsure(playAfter){
   if(!settings.aiInstalled){openAISheet("");return}
   if(playAfter)AI.playWhenReady=true;
@@ -991,8 +1019,8 @@ function aiLoad(mode,fromSheet){
   AI.state="loading";AI.loaded=0;AI.total=0;AI.stage="";AI.slow=false;updateAIUI();updateStatus();
   clearTimeout(AI.watch);
   AI.watch=setTimeout(()=>{if(AI.state==="loading"){AI.slow=true;updateAIUI()}},150000);
-  if(!fromSheet)busy("Starting the AI voice…");
-  try{AI.worker=new Worker("voice-worker.js",{type:"module"})}
+  if(!fromSheet&&!NATIVE)busy("Starting the AI voice…");
+  try{AI.worker=NATIVE?new NativeVoice():new Worker("voice-worker.js",{type:"module"})}
   catch(e){aiFail("This browser can't run the AI voice.");return}
   AI.worker.onmessage=aiMsg;
   AI.worker.onerror=(ev)=>{aiLog("worker error: "+(ev&&ev.message||"unknown")+(ev&&ev.filename?" @ "+ev.filename.split("/").pop()+":"+ev.lineno:""));aiFail("The AI voice stopped working ("+(ev&&ev.message||"unknown error")+").")};
@@ -1194,6 +1222,7 @@ function setMediaSession(){
   }catch(e){}
 }
 async function prefetchVoices(){
+  if(NATIVE)return;   // the iPhone app has its voices built in
   try{
     const c=await caches.open("kokoro-voices");
     for(const [id] of AI_VOICES){
@@ -1221,7 +1250,7 @@ function updateAIUI(){
   $("#aiFast").hidden=$("#aiFastNote").hidden=!CAN_FAST;
   $("#aiProg").hidden=!showProg;
   $("#aiDone").hidden=!inst||showProg;
-  $("#aiRemove").hidden=!inst||loading;
+  $("#aiRemove").hidden=!inst||loading||NATIVE;
   if(showProg){
     const mb=x=>Math.round(x/1048576);
     const pct=AI.total?Math.min(100,AI.loaded/AI.total*100):0;
@@ -1233,12 +1262,13 @@ function updateAIUI(){
     $("#aiRetry").hidden=!AI.slow;if(AI.slow)$("#aiDiag").open=true;
     $("#aiProgHint").textContent=AI.slow?"Tap Try again. The download is saved, so it won't start over.":"Keep Earshot open until it finishes.";
   }
-  if(inst)$("#aiDoneText").textContent=`The AI voice is installed (${settings.aiMode==="fast"?"fast mode":"standard"}). Pick a voice under Natural AI voices in the Voice menu, or choose a narrator in Accents.`;
+  if(inst&&NATIVE)$("#aiDoneText").textContent="The AI voice is built into this app and runs on your iPhone's AI hardware.";
+  else if(inst)$("#aiDoneText").textContent=`The AI voice is installed (${settings.aiMode==="fast"?"fast mode":"standard"}). Pick a voice under Natural AI voices in the Voice menu, or choose a narrator in Accents.`;
 }
 function syncEngineUI(){
   const ai=isAI();
   $("#engSys").setAttribute("aria-checked",String(!ai));$("#engAI").setAttribute("aria-checked",String(ai));
-  $("#engNote").textContent=ai?"Natural AI voice: sounds more human and keeps reading with the screen off. Narrators use British AI voices.":"Apple voices: start instantly, but stop when the screen turns off.";
+  $("#engNote").textContent=ai?(NATIVE?"Natural AI voice, running natively on your iPhone: fast, and keeps reading with the screen off.":"Natural AI voice: sounds more human and keeps reading with the screen off. Narrators use British AI voices."):"Apple voices: start instantly, but stop when the screen turns off.";
   $("#accIntro").textContent=ai?"Pick a narrator. Each one is a British AI voice at a pace that suits the part.":"Pick a narrator. Each one uses a British, Scottish or Irish voice from your device, set deeper or slower to fit the part.";
   $("#depthRow").hidden=ai;$("#sysTip").hidden=ai;updatePrepUI();
 }
@@ -1397,6 +1427,7 @@ $("#prepClear").addEventListener("click",async e=>{
 /* ---------- keep the screen on while reading ---------- */
 let wakeLock=null;
 async function keepAwake(on){
+  if(NATIVE){nativePost({cmd:"awake",on:!!(on||playing||AI.prep)});return}
   try{
     if(on&&!wakeLock&&navigator.wakeLock){wakeLock=await navigator.wakeLock.request("screen");wakeLock.addEventListener("release",()=>{wakeLock=null})}
     else if(!on&&wakeLock&&!playing&&!AI.prep){await wakeLock.release();wakeLock=null}
@@ -1409,7 +1440,7 @@ setSize(settings.size);
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist().catch(()=>{})}catch(e){}
 loadVoices();
 if(synth)synth.onvoiceschanged=loadVoices;
-if(isAI()&&settings.aiInstalled)setTimeout(()=>aiEnsure(false),400);
+if(isAI()&&settings.aiInstalled)setTimeout(()=>aiEnsure(false),NATIVE?100:400);
 openBook("sample",true);
 DB.open().then(()=>DB.all()).then(list=>{
   books=list.sort((a,b)=>(b.added||0)-(a.added||0));

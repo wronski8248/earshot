@@ -1,12 +1,12 @@
 // Earshot offline support.
 // Keeps a copy of the app on the phone so it opens without internet.
-const VERSION = "earshot-v10";
+const VERSION = "earshot-v11";
 const APP_FILES = [
   "./", "index.html", "manifest.webmanifest",
   "jszip.min.js", "pdf.min.js", "pdf.worker.min.js",
   "literata.woff2", "literata-italic.woff2", "bricolage.woff2", "plex-mono-400.woff2", "plex-mono-500.woff2",
   "icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png",
-  "safari-fixes.js", "voice-worker.js", "mp3-encoder.js"
+  "safari-fixes.js", "voice-worker.js", "mp3-encoder.js", "mp3-tools.js", "mp3-worker.js"
 ];
 // Large files for the AI voice: saved the first time they're used, then never re-downloaded.
 const BIG = /\.(wasm|mjs)$|kokoro-engine\.js$/;

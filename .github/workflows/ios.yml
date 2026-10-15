@@ -1,0 +1,90 @@
+# Builds Earshot for iPhone on GitHub's free Mac servers and publishes Earshot.ipa
+# (unsigned; SideStore signs it with your own Apple ID when you install it).
+name: Build iPhone app
+on:
+  push:
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: ios-build
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Choose Xcode 26
+        run: |
+          ls -d /Applications/Xcode*.app
+          X=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$X" ] || X=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          sudo xcode-select -s "$X"
+          xcodebuild -version
+
+      - name: Get the Metal toolchain (needed by MLX)
+        run: xcodebuild -downloadComponent MetalToolchain || echo "Metal toolchain already present or not needed"
+
+      - name: Get the Kokoro voice model
+        run: |
+          mkdir -p ios/Earshot/Model
+          cd ios/Earshot/Model
+          SHA=4e9ecdf03b8b6cf906070390237feda473dc13327cb8d56a43deaa374c02acd8
+          ok=0
+          if curl -fL --retry 3 -o kokoro-v1_0.safetensors "https://media.githubusercontent.com/media/mlalma/KokoroTestApp/main/Resources/kokoro-v1_0.safetensors"; then
+            echo "$SHA  kokoro-v1_0.safetensors" | shasum -a 256 -c && ok=1
+          fi
+          if [ "$ok" != 1 ]; then
+            echo "GitHub copy unavailable, trying Hugging Face"
+            curl -fL --retry 3 -o kokoro-v1_0.safetensors "https://huggingface.co/prince-canuma/Kokoro-82M/resolve/main/kokoro-v1_0.safetensors"
+            shasum -a 256 kokoro-v1_0.safetensors
+          fi
+          curl -fL --retry 3 -o voices.npz "https://raw.githubusercontent.com/mlalma/KokoroTestApp/main/Resources/voices.npz"
+          ls -la
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          cd ios && xcodegen generate
+
+      - name: Build
+        run: |
+          cd ios
+          set -o pipefail
+          xcodebuild -project Earshot.xcodeproj -scheme Earshot -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            -skipPackagePluginValidation -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build > build.log 2>&1 || { grep -E "error:|fatal|warning: .*Metal" build.log | head -80; tail -60 build.log; exit 1; }
+          grep -c "warning:" build.log || true
+          tail -5 build.log
+
+      - name: Package Earshot.ipa
+        run: |
+          cd ios
+          APP=build/Build/Products/Release-iphoneos/Earshot.app
+          ls -la "$APP" | head -40
+          du -sh "$APP"
+          mkdir -p Payload && cp -R "$APP" Payload/
+          zip -qry Earshot.ipa Payload
+          ls -la Earshot.ipa
+
+      - name: Publish as a download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd ios
+          gh release delete iphone-app -y --cleanup-tag || true
+          gh release create iphone-app Earshot.ipa \
+            --title "Earshot for iPhone" \
+            --notes "Install with SideStore: download Earshot.ipa on your iPhone, then in SideStore tap + and pick the file. Built from ${GITHUB_SHA::7}."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-log
+          path: ios/build.log
+          if-no-files-found: ignore
