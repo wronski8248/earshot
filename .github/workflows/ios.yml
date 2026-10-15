@@ -81,6 +81,16 @@ jobs:
           echo "::notice title=Frameworks::$(ls $APP/Frameworks 2>/dev/null | tr '\n' ' ')"
           echo "::notice title=Resource bundles::$(find $APP -name '*.bundle' -maxdepth 3 | sed 's#.*/Earshot.app/##' | tr '\n' ' ')"
           echo "::notice title=Size::app $(du -sh $APP | cut -f1), ipa $(du -h Earshot.ipa | cut -f1)"
+          # every library the app (and its libraries) load at launch must be inside the app
+          missing=""
+          for bin in "$APP/Earshot" $(find "$APP/Frameworks" -maxdepth 2 -type f -perm -u+x 2>/dev/null); do
+            for lib in $(otool -L "$bin" | awk '/@rpath\//{print $1}'); do
+              f=${lib#@rpath/}
+              [ -e "$APP/Frameworks/$f" ] || missing="$missing $f(needed by $(basename "$bin"))"
+            done
+          done
+          if [ -n "$missing" ]; then echo "::error title=Missing libraries::$missing"; exit 1; else echo "::notice title=Libraries::all libraries the app loads are included"; fi
+          echo "::notice title=App links::$(otool -L $APP/Earshot | awk '/@rpath/{print $1}' | sed 's#@rpath/##' | tr '\n' ' ')"
           echo "::notice title=Min iOS::$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' $APP/Info.plist)"
 
       - name: Publish as a download

@@ -27,6 +27,7 @@ targets:
         buildPhase: resources
     dependencies:
       - package: KokoroSwift
+        embed: true
       - package: MLXUtilsLibrary
       - package: mlx-swift
         product: MLX
