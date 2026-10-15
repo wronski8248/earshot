@@ -86,6 +86,7 @@ jobs:
           for bin in "$APP/Earshot" $(find "$APP/Frameworks" -maxdepth 2 -type f -perm -u+x 2>/dev/null); do
             for lib in $(otool -L "$bin" | awk '/@rpath\//{print $1}'); do
               f=${lib#@rpath/}
+              case "$f" in libswift*) continue;; esac   # Swift's own libraries are built into iOS
               [ -e "$APP/Frameworks/$f" ] || missing="$missing $f(needed by $(basename "$bin"))"
             done
           done
