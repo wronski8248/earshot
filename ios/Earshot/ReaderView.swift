@@ -85,6 +85,11 @@ final class Bridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUI
     return nil
   }
 
+  // iOS may shut down the reader screen to save memory; bring it straight back.
+  func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+    webView.reload()
+  }
+
   // First launch with no internet: explain and retry.
   func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
     showRetry(webView, error)

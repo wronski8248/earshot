@@ -32,6 +32,9 @@ final class VoiceEngine {
     center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
       self?.setForeground(true)
     }
+    center.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: nil) { _ in
+      Memory.clearCache()   // the phone is low on memory: let go of the voice engine's scratch space
+    }
     Memory.cacheLimit = 256 * 1024 * 1024
   }
 

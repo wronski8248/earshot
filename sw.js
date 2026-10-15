@@ -1,6 +1,6 @@
 // Earshot offline support.
 // Keeps a copy of the app on the phone so it opens without internet.
-const VERSION = "earshot-v11";
+const VERSION = "earshot-v12";
 const APP_FILES = [
   "./", "index.html", "manifest.webmanifest",
   "jszip.min.js", "pdf.min.js", "pdf.worker.min.js",

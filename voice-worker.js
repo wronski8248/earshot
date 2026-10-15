@@ -42,7 +42,20 @@ async function load({ dtype, device }) {
   };
   const t0 = performance.now();
   log("starting: " + dtype + " on " + device + ", threads: " + (self.crossOriginIsolated ? "multi" : "single"));
-  tts = await KokoroTTS.from_pretrained(MODEL, { dtype, device, progress_callback });
+  // Spotty Wi-Fi: try the download up to 3 times, waiting longer each time. Finished files are kept.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      tts = await KokoroTTS.from_pretrained(MODEL, { dtype, device, progress_callback });
+      break;
+    } catch (err) {
+      const msg = String(err && err.message || err);
+      const network = /fetch|network|load failed|timed? ?out|connection|offline|status/i.test(msg);
+      if (!network || attempt >= 3) throw err;
+      const wait = attempt === 1 ? 3 : 10;
+      log("download problem (" + msg.slice(0, 80) + "), retrying in " + wait + "s");
+      await new Promise(r => setTimeout(r, wait * 1000));
+    }
+  }
   // warm up so the first real sentence starts quickly
   log("voice engine created");
   post({ type: "stage", stage: "testing" });

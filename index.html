@@ -394,14 +394,17 @@ main{grid-row:1;grid-column:2;overflow-y:auto;min-width:0;position:relative;scro
 <div id="toast" hidden role="status" aria-live="polite"></div>
 <div id="drop" hidden><div>Drop EPUB or PDF files to add them</div></div>
 
-<script src="jszip.min.js"></script>
-<script src="pdf.min.js"></script>
 <script>
 (function(){
 "use strict";
 const $=s=>document.querySelector(s);
 const synth=window.speechSynthesis||null;
-if(window.pdfjsLib){try{pdfjsLib.GlobalWorkerOptions.workerSrc="pdf.worker.min.js"}catch(e){}}
+// The PDF and EPUB readers are only loaded when you add a book, so the app opens faster.
+const libs={};
+function loadLib(src){
+  return libs[src]||(libs[src]=new Promise((res,rej)=>{const sc=document.createElement("script");sc.src=src;sc.onload=res;
+    sc.onerror=()=>{delete libs[src];rej(new Error("Couldn't load part of Earshot ("+src+"). Check your connection and try again."))};document.head.appendChild(sc)}));
+}
 
 /* ---------- settings ---------- */
 const settings=Object.assign({rate:1,voice:"",size:20,last:"",pitch:1,preset:"",aiInstalled:false,aiMode:"standard",lastAI:"bf_emma",lastSys:"",prepBook:"",pron:[],upgraded:false,tipShown:false},(()=>{try{return JSON.parse(localStorage.getItem("earshot-settings")||"{}")}catch(e){return {}}})());
@@ -409,9 +412,10 @@ function saveSettings(){try{localStorage.setItem("earshot-settings",JSON.stringi
 
 /* ---------- storage (IndexedDB, per browser) ---------- */
 const DB={db:null,
-  async open(){try{this.db=await new Promise((res,rej)=>{const r=indexedDB.open("earshot",3);
+  async open(){try{this.db=await new Promise((res,rej)=>{const r=indexedDB.open("earshot",4);
     r.onupgradeneeded=(ev)=>{const d=r.result;
       if(ev.oldVersion===2){d.deleteObjectStore("pcm");d.deleteObjectStore("dur")}   // old raw-audio format
+      if(!d.objectStoreNames.contains("pos"))d.createObjectStore("pos");                // reading positions (tiny)
       if(!d.objectStoreNames.contains("books"))d.createObjectStore("books",{keyPath:"id"});
       if(!d.objectStoreNames.contains("pcm"))d.createObjectStore("pcm");     // prepared AI audio
       if(!d.objectStoreNames.contains("dur"))d.createObjectStore("dur")};    // its length in seconds
@@ -419,7 +423,11 @@ const DB={db:null,
   store(m){return this.db.transaction("books",m).objectStore("books")},
   all(){return new Promise(res=>{if(!this.db)return res([]);try{const r=this.store("readonly").getAll();r.onsuccess=()=>res(r.result||[]);r.onerror=()=>res([])}catch(e){res([])}})},
   put(b){if(!this.db||b.sample)return;try{this.store("readwrite").put(b)}catch(e){}},
-  del(id){if(!this.db)return;try{this.store("readwrite").delete(id)}catch(e){}ADB.clear(id+"|")}
+  del(id){if(!this.db)return;try{this.store("readwrite").delete(id)}catch(e){}try{this.db.transaction("pos","readwrite").objectStore("pos").delete(id)}catch(e){}ADB.clear(id+"|")},
+  // the reading position is saved on its own, so the whole book isn't rewritten every second
+  savePos(b){if(!this.db||b.sample)return;try{this.db.transaction("pos","readwrite").objectStore("pos").put({pos:b.pos||0,count:b.count||0},b.id)}catch(e){}},
+  allPos(){return new Promise(res=>{const m=new Map();if(!this.db||!this.db.objectStoreNames.contains("pos"))return res(m);
+    try{const r=this.db.transaction("pos").objectStore("pos").openCursor();r.onsuccess=()=>{const c=r.result;if(!c)return res(m);m.set(c.key,c.value);c.continue()};r.onerror=()=>res(m)}catch(e){res(m)}})}
 };
 // Prepared AI audio, saved per book + voice + sentence, so it survives closing the app.
 const ADB={
@@ -537,7 +545,7 @@ function setIdx(i,scroll){
   idx=i;const s=sents[idx];s.el.classList.add("cur");
   if(scroll!==false&&follow) s.el.scrollIntoView({block:"center",behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"});
   $("#prog").value=idx;updateStatus();
-  if(cur){cur.pos=idx;clearTimeout(saveTimer);saveTimer=setTimeout(()=>{DB.put(cur);renderLibrary()},900)}
+  if(cur){cur.pos=idx;clearTimeout(saveTimer);const b=cur;saveTimer=setTimeout(()=>{DB.savePos(b);updateLibraryItem(b)},1500)}
 }
 function fmtTime(min){if(!isFinite(min))return "—";if(min<1)return "under a minute";const h=Math.floor(min/60),m=Math.round(min%60);return h?`${h}h ${m}m`:`${m} min`}
 function updateStatus(){
@@ -750,11 +758,16 @@ function applyPreset(id){
 }
 
 /* ---------- library ---------- */
+function bookPct(b){const n=b.count||0;return n>1?Math.round((b.pos||0)/(n-1)*100):0}
+function updateLibraryItem(b){
+  const li=document.querySelector(`.bk[data-id="${CSS.escape(b.id)}"]`);if(!li){renderLibrary();return}
+  const p=bookPct(b);li.querySelector(".bar i").style.width=p+"%";li.querySelector(".pct").textContent=p+"%";
+}
 function renderLibrary(){
   const ul=$("#books");ul.textContent="";
   for(const b of [...books,SAMPLE]){
     const li=document.createElement("li");li.className="bk"+(cur&&cur.id===b.id?" on":"");li.tabIndex=0;li.dataset.id=b.id;
-    const n=b.count||0;const pct=n>1?Math.round((b.pos||0)/(n-1)*100):0;
+    const pct=bookPct(b);
     li.innerHTML=`<div class="t"></div><div class="a"></div><div class="meta"><span class="pill"></span><span class="bar"><i style="width:${pct}%"></i></span><span class="pct">${pct}%</span></div>`;
     li.querySelector(".t").textContent=b.title;li.querySelector(".a").textContent=b.author||"Unknown author";li.querySelector(".pill").textContent=b.type;
     if(!b.sample){const rm=document.createElement("button");rm.type="button";rm.className="rm";rm.textContent="Remove";rm.setAttribute("aria-label","Remove "+b.title);li.appendChild(rm)}
@@ -777,7 +790,7 @@ $("#books").addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.classLis
 function openBook(id,boot){
   const b=id==="sample"?SAMPLE:books.find(x=>x.id===id)||SAMPLE;
   stop();aiClear();cur=b;if(!boot){settings.last=b.id;saveSettings()}
-  render(b);b.count=sents.length;
+  render(b);if(b.count!==sents.length){b.count=sents.length;DB.savePos(b)}
   $("#bTitle").textContent=b.title;$("#bAuthor").textContent=b.author||"Unknown author";$("#pTitle").textContent=b.title;
   $("#sampleNote").hidden=!b.sample;
   idx=0;follow=true;$("#follow").hidden=true;
@@ -814,13 +827,15 @@ function resolvePath(dir,href){const out=[];for(const p of (dir+href).split("/")
 const BLK="h1,h2,h3,h4,h5,h6,p,li,blockquote,pre,dt,dd,figcaption,td";
 function extractBlocks(root,blocks){
   if(!root)return;
-  root.querySelectorAll("script,style,rt,rp,head").forEach(n=>n.remove());
+  root.querySelectorAll("script,style,rt,rp,head,nav").forEach(n=>n.remove());
   const els=[...root.querySelectorAll(BLK)].filter(el=>!el.querySelector(BLK));
+  // a page that is mostly links is a table of contents: skip it rather than read out every chapter title
+  if(els.length>=4){const linky=els.filter(el=>{const a=el.querySelector("a");return a&&norm(a.textContent).length>=norm(el.textContent).length*.8}).length;if(linky/els.length>.6)return}
   if(!els.length){const x=norm(root.textContent);if(x)blocks.push({t:"p",x});return}
   for(const el of els){const x=norm(el.textContent);if(x)blocks.push({t:/^h\d$/i.test(el.localName)?"h":"p",x})}
 }
 async function parseEpub(buf){
-  if(!window.JSZip)throw new Error("The EPUB reader didn't load. Check your internet connection and reload the page.");
+  if(!window.JSZip)await loadLib("jszip.min.js");
   const zip=await JSZip.loadAsync(buf);
   const xml=s=>new DOMParser().parseFromString(s,"application/xml");
   const cont=zip.file("META-INF/container.xml");if(!cont)throw new Error("This file isn't a valid EPUB (its table of contents is missing).");
@@ -829,10 +844,11 @@ async function parseEpub(buf){
   const opf=xml(await opfFile.async("string"));
   const dir=opfPath.includes("/")?opfPath.slice(0,opfPath.lastIndexOf("/")+1):"";
   const meta=n=>norm(opf.getElementsByTagNameNS("*",n)[0]?.textContent);
-  const man={};for(const it of opf.getElementsByTagNameNS("*","item"))man[it.getAttribute("id")]={href:it.getAttribute("href")||"",type:it.getAttribute("media-type")||""};
+  const man={};for(const it of opf.getElementsByTagNameNS("*","item"))man[it.getAttribute("id")]={href:it.getAttribute("href")||"",type:it.getAttribute("media-type")||"",nav:/\bnav\b/.test(it.getAttribute("properties")||"")};
   const blocks=[];
   for(const ref of opf.getElementsByTagNameNS("*","itemref")){
-    const it=man[ref.getAttribute("idref")];if(!it||(it.type&&!/html|xml/.test(it.type)))continue;
+    const it=man[ref.getAttribute("idref")];if(!it||it.nav||(it.type&&!/html|xml/.test(it.type)))continue;
+    if(ref.getAttribute("linear")==="no")continue;   // extras outside the main reading order
     const path=resolvePath(dir,it.href.split("#")[0]);
     const zf=zip.file(path)||zip.file(decodeURIComponent(path));if(!zf)continue;
     const src=await zf.async("string");
@@ -843,14 +859,15 @@ async function parseEpub(buf){
   return {title:meta("title"),author:meta("creator"),blocks,drm:!!zip.file("META-INF/encryption.xml")};
 }
 async function parsePdf(buf,progress){
-  if(!window.pdfjsLib)throw new Error("The PDF reader didn't load. Check your internet connection and reload the page.");
+  if(!window.pdfjsLib){await loadLib("pdf.min.js");try{pdfjsLib.GlobalWorkerOptions.workerSrc="pdf.worker.min.js"}catch(e){}}
   const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buf),isEvalSupported:false}).promise;
   let title="",author="";
   try{const m=await pdf.getMetadata();title=norm(m.info&&m.info.Title);author=norm(m.info&&m.info.Author);if(/^(microsoft|untitled)|\.(docx?|pdf|indd)$/i.test(title))title=""}catch(e){}
-  const blocks=[];const N=pdf.numPages;
+  const blocks=[];const N=pdf.numPages;const pages=[];
   for(let p=1;p<=N;p++){
     progress(p,N);
     const page=await pdf.getPage(p);const tc=await page.getTextContent();
+    const H=(page.view&&page.view[3])||792;
     const lines=[];let line=null;
     for(const it of tc.items){
       if(!("str" in it))continue;
@@ -864,6 +881,20 @@ async function parsePdf(buf,progress){
     let L=lines.map(l=>({...l,s:norm(l.s)})).filter(l=>l.s);
     if(L.length&&/^\d{1,4}$/.test(L[0].s))L.shift();
     if(L.length&&/^\d{1,4}$/.test(L[L.length-1].s))L.pop();
+    if(L.length)pages.push({p,L,H});
+  }
+  // Running headers and footers (book title, chapter name, "Page 12 of 300") repeat at the top or bottom
+  // of most pages. Find them and leave them out so they aren't read aloud on every page.
+  const key=s=>s.toLowerCase().replace(/\d+/g,"#").replace(/\s+/g," ").trim();
+  // only lines printed in the top or bottom margin of the page can be headers or footers
+  const inMargin=(l,H)=>l.y>H*.92||l.y<H*.075;
+  const edge=new Map();
+  for(const {L,H} of pages)for(const k of new Set(L.filter(l=>inMargin(l,H)).map(l=>key(l.s))))
+    if(k.length<=70)edge.set(k,(edge.get(k)||0)+1);
+  const repeated=new Set();
+  if(pages.length>=6)for(const [k,c] of edge)if(c>=Math.max(3,pages.length*.3))repeated.add(k);
+  for(const {p,L:all,H} of pages){
+    const L=all.filter(l=>!(inMargin(l,H)&&repeated.has(key(l.s))));
     if(!L.length)continue;
     if(N>1)blocks.push({t:"pg",x:"Page "+p});
     const gaps=[];for(let i=1;i<L.length;i++){const g=L[i-1].y-L[i].y;if(g>0)gaps.push(g)}
@@ -1228,7 +1259,10 @@ async function prefetchVoices(){
     for(const [id] of AI_VOICES){
       const u=HF_BASE+"voices/"+id+".bin";
       if(await c.match(u))continue;
-      const r=await fetch(u);if(r.ok)await c.put(u,new Response(await r.arrayBuffer(),{headers:{"Content-Type":"application/octet-stream"}}));
+      for(let t=0;t<3;t++){
+        try{const r=await fetch(u);if(r.ok){await c.put(u,new Response(await r.arrayBuffer(),{headers:{"Content-Type":"application/octet-stream"}}));break}}catch(err){}
+        await new Promise(r=>setTimeout(r,2000*(t+1)));   // wait a little longer each time
+      }
     }
   }catch(e){}
 }
@@ -1442,7 +1476,8 @@ loadVoices();
 if(synth)synth.onvoiceschanged=loadVoices;
 if(isAI()&&settings.aiInstalled)setTimeout(()=>aiEnsure(false),NATIVE?100:400);
 openBook("sample",true);
-DB.open().then(()=>DB.all()).then(list=>{
+DB.open().then(()=>Promise.all([DB.all(),DB.allPos()])).then(([list,pos])=>{
+  for(const b of list){const p=pos.get(b.id);if(p){b.pos=p.pos;if(p.count)b.count=p.count}}
   books=list.sort((a,b)=>(b.added||0)-(a.added||0));
   if(settings.last&&settings.last!=="sample"&&books.some(b=>b.id===settings.last))openBook(settings.last);else renderLibrary();
 });
