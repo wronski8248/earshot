@@ -24,8 +24,6 @@ self.addEventListener("activate", e => {
   })());
 });
 
-function isolate(res) { return res; }
-
 self.addEventListener("fetch", e => {
   const req = e.request;
   const url = new URL(req.url);
@@ -41,7 +39,7 @@ self.addEventListener("fetch", e => {
         res = await fetch(req);
         if (res.ok) await c.put(key, res.clone());
       }
-      return isolate(res);
+      return res;
     })());
     return;
   }

@@ -81,7 +81,7 @@ async function pump() {
     const job = queue.shift();
     try {
       const t0 = performance.now();
-      const audio = await tts.generate(job.text, { voice: job.voice, speed: job.speed || 1 });
+      const audio = await tts.generate(job.text, { voice: job.voice });
       const rate = audio.sampling_rate, gap = Math.round((job.gap || 0) * rate);
       const pcm = new Int16Array(audio.audio.length + gap);
       pcm.set(toInt16(audio.audio));

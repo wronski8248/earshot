@@ -340,8 +340,6 @@ main{grid-row:1;grid-column:2;overflow-y:auto;min-width:0;position:relative;scro
   </ul>
   <div id="aiChoices" style="display:flex;flex-direction:column;gap:8px">
     <button class="add" id="aiStd" type="button">Download the AI voice · 92 MB</button>
-    <button class="ib" id="aiFast" type="button" hidden>Download fast mode · 326 MB</button>
-    <p class="hint2" id="aiFastNote" hidden>Fast mode uses your phone's graphics chip, so it prepares audio several times faster, but it's a bigger download. If it doesn't start on your device, Earshot switches to the standard download.</p>
   </div>
   <div id="aiProg" hidden style="display:flex;flex-direction:column;gap:8px">
     <span class="bar big"><i id="aiBar" style="width:0%"></i></span>
@@ -407,7 +405,7 @@ function loadLib(src){
 }
 
 /* ---------- settings ---------- */
-const settings=Object.assign({rate:1,voice:"",size:20,last:"",pitch:1,preset:"",aiInstalled:false,aiMode:"standard",lastAI:"bf_emma",lastSys:"",prepBook:"",pron:[],upgraded:false,tipShown:false},(()=>{try{return JSON.parse(localStorage.getItem("earshot-settings")||"{}")}catch(e){return {}}})());
+const settings=Object.assign({rate:1,voice:"",size:20,last:"",pitch:1,preset:"",aiInstalled:false,lastAI:"bf_emma",lastSys:"",prepBook:"",pron:[],upgraded:false,tipShown:false},(()=>{try{return JSON.parse(localStorage.getItem("earshot-settings")||"{}")}catch(e){return {}}})());
 function saveSettings(){try{localStorage.setItem("earshot-settings",JSON.stringify(settings))}catch(e){}}
 
 /* ---------- storage (IndexedDB, per browser) ---------- */
@@ -996,9 +994,6 @@ const AI={state:"off",worker:null,device:"",audio:new Map(),inflight:new Map(),n
 AI.el.preload="auto";
 try{AI.el.preservesPitch=true;AI.el.webkitPreservesPitch=true}catch(e){}
 function isAI(){return String(settings.voice||"").startsWith("ai:")}
-const IS_WEBKIT=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1)||/^((?!chrome|chromium|android|crios|fxios|edg).)*safari/i.test(navigator.userAgent);
-const CAN_FAST=false;
-if(!CAN_FAST&&settings.aiMode==="fast"){settings.aiMode="standard";try{localStorage.setItem("earshot-settings",JSON.stringify(settings))}catch(e){}}
 function aiVoice(){return String(settings.voice).slice(3)||"bf_emma"}
 
 // Inside the Earshot iPhone app, the AI voice runs natively (much faster). This object behaves
@@ -1034,7 +1029,7 @@ function aiEnsure(playAfter){
   if(playAfter)AI.playWhenReady=true;
   if(AI.state==="ready"){if(AI.playWhenReady){AI.playWhenReady=false;play()}return}
   if(AI.state==="loading"){updateStatus();return}
-  aiLoad(settings.aiMode,false);
+  aiLoad(false);
 }
 const AILOG=[];let aiT0=0,aiLastTick=0;
 function aiLog(m){AILOG.push(m);if(AILOG.length>80)AILOG.shift();const el=$("#aiLog");if(el){el.textContent=AILOG.join("\n");el.scrollTop=el.scrollHeight}}
@@ -1043,7 +1038,7 @@ setInterval(()=>{
   const quiet=(performance.now()-aiLastTick)/1000;
   if(quiet>12&&!AI.quietNoted){AI.quietNoted=true;aiLog("(no signal from the engine for "+Math.round(quiet)+"s: it is either busy or the phone stopped it)")}
 },3000);
-function aiLoad(mode,fromSheet){
+function aiLoad(fromSheet){
   AILOG.length=0;aiT0=performance.now();aiLastTick=performance.now();AI.quietNoted=false;
   aiLog(navigator.userAgent.replace(/^Mozilla\/5.0 /,"").slice(0,140));
   aiLog("page: "+(self.crossOriginIsolated?"isolated":"not isolated")+", memory hint: "+(navigator.deviceMemory||"n/a")+" GB, cores: "+(navigator.hardwareConcurrency||"n/a"));
@@ -1055,8 +1050,7 @@ function aiLoad(mode,fromSheet){
   catch(e){aiFail("This browser can't run the AI voice.");return}
   AI.worker.onmessage=aiMsg;
   AI.worker.onerror=(ev)=>{aiLog("worker error: "+(ev&&ev.message||"unknown")+(ev&&ev.filename?" @ "+ev.filename.split("/").pop()+":"+ev.lineno:""));aiFail("The AI voice stopped working ("+(ev&&ev.message||"unknown error")+").")};
-  const fast=mode==="fast"&&CAN_FAST;
-  AI.worker.postMessage({type:"load",dtype:fast?"fp32":"q8",device:fast?"webgpu":"wasm"});
+  AI.worker.postMessage({type:"load",dtype:"q8",device:"wasm"});   // CPU on purpose: the graphics-chip path crashes on iPhone
 }
 function aiFail(msg){
   aiLog("FAILED: "+msg);$("#aiDiag").open=true;
@@ -1082,11 +1076,10 @@ function aiMsg(e){
   if(m.type==="progress"){AI.loaded=m.loaded;AI.total=m.total;updateAIUI()}
   else if(m.type==="stage"){AI.stage=m.stage;updateAIUI();
     clearTimeout(AI.watch);AI.watch=setTimeout(()=>{if(AI.state==="loading"){AI.slow=true;updateAIUI()}},m.stage==="testing"?90000:120000)}
-  else if(m.type==="note"){settings.aiMode="standard";saveSettings();toast(m.message)}
   else if(m.type==="fail"){aiFail("The AI voice couldn't start ("+m.message+").")}
   else if(m.type==="ready"){
     clearTimeout(AI.watch);AI.slow=false;
-    AI.state="ready";AI.device=m.device;settings.aiInstalled=true;saveSettings();
+    AI.state="ready";settings.aiInstalled=true;saveSettings();
     $("#toast").hidden=true;loadVoices();updateAIUI();updateStatus();prefetchVoices();aiLoadIndex();
     if(!$("#aiSheet").hidden&&AI.fromSheet){AI.fromSheet=false;closeAISheet();toast("The AI voice is ready. Press play to listen.")}
     if(AI.playWhenReady){AI.playWhenReady=false;playing=false;AI.waiting=false;play()}
@@ -1281,7 +1274,6 @@ function updateAIUI(){
   const inst=settings.aiInstalled,loading=AI.state==="loading";
   const showProg=loading&&(AI.fromSheet||!inst);
   $("#aiChoices").hidden=inst||showProg;
-  $("#aiFast").hidden=$("#aiFastNote").hidden=!CAN_FAST;
   $("#aiProg").hidden=!showProg;
   $("#aiDone").hidden=!inst||showProg;
   $("#aiRemove").hidden=!inst||loading||NATIVE;
@@ -1297,7 +1289,7 @@ function updateAIUI(){
     $("#aiProgHint").textContent=AI.slow?"Tap Try again. The download is saved, so it won't start over.":"Keep Earshot open until it finishes.";
   }
   if(inst&&NATIVE)$("#aiDoneText").textContent="The AI voice is built into this app and runs on your iPhone's AI hardware.";
-  else if(inst)$("#aiDoneText").textContent=`The AI voice is installed (${settings.aiMode==="fast"?"fast mode":"standard"}). Pick a voice under Natural AI voices in the Voice menu, or choose a narrator in Accents.`;
+  else if(inst)$("#aiDoneText").textContent=`The AI voice is installed. Pick a voice under Natural AI voices in the Voice menu, or choose a narrator in Accents.`;
 }
 function syncEngineUI(){
   const ai=isAI();
@@ -1315,8 +1307,7 @@ $("#engSys").addEventListener("click",()=>{
   if(!isAI())return;if(playing)stop();
   settings.voice=settings.lastSys||"";settings.preset="";saveSettings();loadVoices();
 });
-$("#aiStd").addEventListener("click",()=>{settings.aiMode="standard";saveSettings();AI.fromSheet=true;aiLoad("standard",true)});
-$("#aiFast").addEventListener("click",()=>{settings.aiMode="fast";saveSettings();AI.fromSheet=true;aiLoad("fast",true)});
+$("#aiStd").addEventListener("click",()=>{AI.fromSheet=true;aiLoad(true)});
 $("#aiClose").addEventListener("click",closeAISheet);
 $("#aiCopy").addEventListener("click",()=>{
   const t=AILOG.join("\n")||"(empty)";
@@ -1325,8 +1316,7 @@ $("#aiCopy").addEventListener("click",()=>{
 });
 $("#aiRetry").addEventListener("click",()=>{
   if(AI.worker){AI.worker.terminate();AI.worker=null}
-  settings.aiMode="standard";saveSettings();
-  AI.fromSheet=true;aiLoad("standard",true);
+  AI.fromSheet=true;aiLoad(true);
 });
 $("#aiScrim").addEventListener("click",closeAISheet);
 $("#aiRemove").addEventListener("click",async e=>{
