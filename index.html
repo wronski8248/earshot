@@ -176,6 +176,18 @@ main{grid-row:1;grid-column:2;overflow-y:auto;min-width:0;position:relative;scro
 #play.wait{position:relative}
 #play.wait::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid var(--accent);border-right-color:transparent;animation:sp 1s linear infinite}
 
+/* Chapters */
+.scrim{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.4)}
+.sheet2{position:fixed;z-index:71;left:50%;top:50%;transform:translate(-50%,-50%);width:min(440px,calc(100% - 32px));max-height:calc(100% - 48px);
+  background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:20px;display:flex;flex-direction:column;gap:12px}
+.sheet2 h3{margin:0;font-family:var(--f-read);font-size:22px;font-weight:600}
+#chapList{margin:0;padding:0;list-style:none;overflow-y:auto;min-height:0;display:flex;flex-direction:column}
+#chapList button{width:100%;text-align:left;border:0;background:none;padding:10px 8px;border-radius:8px;font-size:15px;display:flex;gap:10px;align-items:baseline}
+#chapList button:hover{background:var(--paper)}
+#chapList .on button{background:color-mix(in srgb,var(--accent) 12%,transparent);font-weight:600}
+#chapList .pc{margin-left:auto;font-family:var(--f-mono);font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+#chapClose{align-self:flex-end}
+
 /* Prepare ahead sheet (shares the AI sheet look) */
 #prepScrim{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.4)}
 #prepSheet{position:fixed;z-index:71;left:50%;top:50%;transform:translate(-50%,-50%);width:min(440px,calc(100% - 32px));max-height:calc(100% - 48px);overflow-y:auto;
@@ -257,6 +269,9 @@ main{grid-row:1;grid-column:2;overflow-y:auto;min-width:0;position:relative;scro
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
     </button>
     <div class="ttl"><b id="bTitle">Pride and Prejudice</b><span id="bAuthor">Jane Austen</span></div>
+    <button class="ib" id="chapBtn" type="button" aria-label="Chapters" hidden>
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h1.5M2 8h1.5M2 12.5h1.5M6 3.5h8M6 8h8M6 12.5h8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+    </button>
     <button class="ib" id="smaller" type="button" aria-label="Smaller text"><span style="font-size:12px;font-weight:600">A</span></button>
     <button class="ib" id="bigger" type="button" aria-label="Larger text"><span style="font-size:17px;font-weight:600">A</span></button>
   </div>
@@ -360,6 +375,12 @@ main{grid-row:1;grid-column:2;overflow-y:auto;min-width:0;position:relative;scro
     <button class="ib" id="aiClose" type="button">Close</button>
   </div>
 </section>
+<div id="chapScrim" class="scrim" hidden></div>
+<section id="chapSheet" class="sheet2" hidden role="dialog" aria-modal="true" aria-labelledby="chapTitle">
+  <h3 id="chapTitle">Chapters</h3>
+  <ol id="chapList"></ol>
+  <button class="ib" id="chapClose" type="button">Close</button>
+</section>
 <div id="prepScrim" hidden></div>
 <section id="prepSheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="prepTitle">
   <h3 id="prepTitle">Prepare ahead</h3>
@@ -372,7 +393,7 @@ main{grid-row:1;grid-column:2;overflow-y:auto;min-width:0;position:relative;scro
       <button class="ib" type="button" data-min="120">2 hours</button>
     </div>
     <button class="add" type="button" id="prepWhole" style="margin:0;flex-direction:column;gap:2px">
-      <span>Save the whole book</span>
+      <span>Save the rest of the book</span>
       <span id="prepWholeInfo" style="font-weight:400;font-size:12px;opacity:.9"></span>
     </button>
   </div>
@@ -435,6 +456,7 @@ const ADB={
   durs(prefix){return new Promise(res=>{const m=new Map();if(!this.ok())return res(m);
     try{const r=DB.db.transaction("dur").objectStore("dur").openCursor(IDBKeyRange.bound(prefix,prefix+"\uffff"));
       r.onsuccess=()=>{const c=r.result;if(!c)return res(m);m.set(+String(c.key).slice(prefix.length),c.value);c.continue()};r.onerror=()=>res(m)}catch(e){res(m)}})},
+  del(keys){if(!this.ok()||!keys.length)return;try{const t=DB.db.transaction(["pcm","dur"],"readwrite");for(const k of keys){t.objectStore("pcm").delete(k);t.objectStore("dur").delete(k)}}catch(e){}},
   clear(prefix){return new Promise(res=>{if(!this.ok())return res();
     try{const t=DB.db.transaction(["pcm","dur"],"readwrite");
       const range=prefix?IDBKeyRange.bound(prefix,prefix+"\uffff"):null;
@@ -519,12 +541,22 @@ function speakable(t,isHeading){
 }
 
 /* ---------- rendering ---------- */
+// A short line like "Chapter 4", "PART II", "Prologue" or a lone Roman numeral starts a chapter.
+const CHAPTER_LINE=/^(chapter|part|book|prologue|epilogue|preface|introduction|afterword|interlude)\b[^.!?]{0,60}$|^[IVXLC]{1,6}\.?$/i;
+let chapters=[];
 function render(book){
-  const art=$("#text");art.textContent="";sents=[];wordsBefore=[];totalWords=0;
+  const art=$("#text");art.textContent="";sents=[];wordsBefore=[];totalWords=0;chapters=[];
   const frag=document.createDocumentFragment();
   for(const b of book.blocks){
     if(b.t==="pg"){const d=document.createElement("div");d.className="pg";d.textContent=b.x;frag.appendChild(d);continue}
-    const el=document.createElement(b.t==="h"?"h2":"p");
+    const isHead=b.t==="h"||(b.x.length<=70&&CHAPTER_LINE.test(b.x.trim()));
+    if(isHead||b.c){
+      const last=chapters[chapters.length-1];
+      // "Chapter 4" right before its title "The Wolf" becomes one chapter: "Chapter 4: The Wolf"
+      if(last&&sents.length-last.i<=1&&isHead&&last.title.length<40)last.title+=": "+b.x.trim();
+      else chapters.push({i:sents.length,title:isHead?b.x.trim():(b.c===true?"":b.c)});
+    }
+    const el=document.createElement(isHead?"h2":"p");
     for(const s of splitSentences(b.x)) for(const c of chunk(s)){
       const sp=document.createElement("span");sp.className="s";sp.dataset.i=sents.length;sp.textContent=c;
       const w=(c.match(/\S+/g)||[]).length;wordsBefore.push(totalWords);totalWords+=w;
@@ -534,7 +566,38 @@ function render(book){
   }
   art.appendChild(frag);
   $("#prog").max=Math.max(0,sents.length-1);
+  chapters=chapters.filter(c=>c.i<sents.length);
+  chapters.forEach((c,n)=>{if(!c.title)c.title=sents[c.i].text.slice(0,50)||"Section "+(n+1)});
+  $("#chapBtn").hidden=chapters.length<2;
 }
+let curChapter=null;
+function showChapter(){
+  if(!cur)return;
+  $("#bAuthor").textContent=curChapter?curChapter.title:(cur.author||"Unknown author");
+  if(playing)setMediaSession();
+}
+function openChapters(){
+  const ol=$("#chapList");ol.textContent="";
+  chapters.forEach((c,n)=>{
+    const li=document.createElement("li");if(c===curChapter)li.className="on";
+    const b=document.createElement("button");b.type="button";
+    b.append(c.title,Object.assign(document.createElement("span"),{className:"pc",textContent:Math.round(wordsBefore[c.i]/Math.max(1,totalWords)*100)+"%"}));
+    b.onclick=()=>{closeChapters();follow=true;playing?speakFrom(c.i):setIdx(c.i)};
+    li.appendChild(b);ol.appendChild(li);
+  });
+  $("#chapSheet").hidden=false;$("#chapScrim").hidden=false;
+  const on=ol.querySelector(".on");if(on)on.scrollIntoView({block:"center"});
+}
+function closeChapters(){$("#chapSheet").hidden=true;$("#chapScrim").hidden=true}
+$("#chapBtn").addEventListener("click",openChapters);
+$("#chapClose").addEventListener("click",closeChapters);
+$("#chapScrim").addEventListener("click",closeChapters);
+function jumpChapter(dir){
+  const n=chapters.indexOf(curChapter);
+  const target=dir<0&&curChapter&&idx-curChapter.i>3?curChapter:chapters[n+dir];   // "back" first restarts this chapter
+  if(target)playing?speakFrom(target.i):setIdx(target.i);
+}
+function chapterAt(i){let c=null;for(const ch of chapters){if(ch.i>i)break;c=ch}return c}
 
 function setIdx(i,scroll){
   if(!sents.length)return;
@@ -543,7 +606,8 @@ function setIdx(i,scroll){
   idx=i;const s=sents[idx];s.el.classList.add("cur");
   if(scroll!==false&&follow) s.el.scrollIntoView({block:"center",behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"});
   $("#prog").value=idx;updateStatus();
-  if(cur){cur.pos=idx;clearTimeout(saveTimer);const b=cur;saveTimer=setTimeout(()=>{DB.savePos(b);updateLibraryItem(b)},1500)}
+  const ch=chapterAt(idx);if(ch!==curChapter){curChapter=ch;showChapter()}
+  if(cur){cur.pos=idx;clearTimeout(saveTimer);const b=cur;saveTimer=setTimeout(()=>{DB.savePos(b);updateLibraryItem(b);aiTrimBehind()},1500)}
 }
 function fmtTime(min){if(!isFinite(min))return "—";if(min<1)return "under a minute";const h=Math.floor(min/60),m=Math.round(min%60);return h?`${h}h ${m}m`:`${m} min`}
 function updateStatus(){
@@ -561,12 +625,12 @@ function updateStatus(){
 
 /* ---------- speech ---------- */
 function pickVoice(){return voices.find(v=>v.voiceURI===settings.voice)||null}
-// Apple voices read a whole paragraph at a time (up to ~500 letters), which keeps their
+// Apple voices read a whole paragraph at a time (up to ~1000 letters), which keeps their
 // rhythm and intonation flowing instead of restarting at every sentence.
 function buildGroup(start){
   const par=sents[start].el.parentNode,isH=/^H\d$/.test(par.nodeName);
   let end=start,len=sents[start].text.length;
-  while(end+1<sents.length&&sents[end+1].el.parentNode===par&&len+sents[end+1].text.length<500){end++;len+=sents[end].text.length}
+  while(end+1<sents.length&&sents[end+1].el.parentNode===par&&len+sents[end+1].text.length<1000){end++;len+=sents[end].text.length}
   let text="";const map=[];
   for(let i=start;i<=end;i++){
     const sp=speakable(sents[i].text,isH);
@@ -593,7 +657,7 @@ function speakCurrent(){
     if(g.end>=sents.length-1){stop();toast("Finished reading.");return}
     const newPar=sents[g.end+1].el.parentNode!==g.par;
     setIdx(g.end+1);
-    if(newPar)setTimeout(()=>{if(my===token&&playing)speakCurrent()},280);else speakCurrent();
+    if(newPar)setTimeout(()=>{if(my===token&&playing)speakCurrent()},100);else speakCurrent();
   };
   if(!g.text){setTimeout(next,400);return}                       // a scene break: just a pause
   const u=new SpeechSynthesisUtterance(g.text);utt=u;
@@ -789,7 +853,7 @@ function openBook(id,boot){
   const b=id==="sample"?SAMPLE:books.find(x=>x.id===id)||SAMPLE;
   stop();aiClear();cur=b;if(!boot){settings.last=b.id;saveSettings()}
   render(b);if(b.count!==sents.length){b.count=sents.length;DB.savePos(b)}
-  $("#bTitle").textContent=b.title;$("#bAuthor").textContent=b.author||"Unknown author";$("#pTitle").textContent=b.title;
+  curChapter=null;$("#bTitle").textContent=b.title;$("#bAuthor").textContent=b.author||"Unknown author";$("#pTitle").textContent=b.title;
   $("#sampleNote").hidden=!b.sample;
   idx=0;follow=true;$("#follow").hidden=true;
   $("#main").scrollTop=0;
@@ -852,7 +916,9 @@ async function parseEpub(buf){
     const src=await zf.async("string");
     let doc=new DOMParser().parseFromString(src,"application/xhtml+xml");
     if(doc.getElementsByTagName("parsererror").length)doc=new DOMParser().parseFromString(src,"text/html");
+    const before=blocks.length;
     extractBlocks(doc.body||doc.getElementsByTagName("body")[0]||doc.documentElement,blocks);
+    if(blocks.length>before&&blocks[before].t!=="h")blocks[before].c=true;
   }
   return {title:meta("title"),author:meta("creator"),blocks,drm:!!zip.file("META-INF/encryption.xml")};
 }
@@ -862,6 +928,11 @@ async function parsePdf(buf,progress){
   let title="",author="";
   try{const m=await pdf.getMetadata();title=norm(m.info&&m.info.Title);author=norm(m.info&&m.info.Author);if(/^(microsoft|untitled)|\.(docx?|pdf|indd)$/i.test(title))title=""}catch(e){}
   const blocks=[];const N=pdf.numPages;const pages=[];
+  const marks=new Map();   // page number -> bookmark title
+  try{for(const o of (await pdf.getOutline())||[]){
+    let d=o.dest;if(typeof d==="string")d=await pdf.getDestination(d);
+    if(Array.isArray(d)&&d[0]){const pn=(typeof d[0]==="object"?await pdf.getPageIndex(d[0]):d[0])+1;if(!marks.has(pn))marks.set(pn,norm(o.title))}
+  }}catch(e){}
   for(let p=1;p<=N;p++){
     progress(p,N);
     const page=await pdf.getPage(p);const tc=await page.getTextContent();
@@ -895,18 +966,20 @@ async function parsePdf(buf,progress){
     const L=all.filter(l=>!(inMargin(l,H)&&repeated.has(key(l.s))));
     if(!L.length)continue;
     if(N>1)blocks.push({t:"pg",x:"Page "+p});
+    const markAt=blocks.length;
     const gaps=[];for(let i=1;i<L.length;i++){const g=L[i-1].y-L[i].y;if(g>0)gaps.push(g)}
     gaps.sort((a,b)=>a-b);const med=gaps.length?gaps[Math.floor(gaps.length/2)]:14;
     const maxLen=Math.max(...L.map(l=>l.s.length));
     let para=L[0].s;
     for(let i=1;i<L.length;i++){
       const prev=L[i-1],c=L[i],g=prev.y-c.y;
-      const brk=g>med*1.45||g<-med||(/[.!?:”"]$/.test(prev.s)&&prev.s.length<maxLen*.7);
+      const brk=g>med*1.45||g<-med||(/[.!?:”"]$/.test(prev.s)&&prev.s.length<maxLen*.7)||CHAPTER_LINE.test(prev.s)||CHAPTER_LINE.test(c.s);
       if(brk){blocks.push({t:"p",x:para});para=c.s}
       else if(/[A-Za-z]-$/.test(para)&&/^[a-z]/.test(c.s))para=para.slice(0,-1)+c.s;
       else para+=" "+c.s;
     }
     blocks.push({t:"p",x:para});
+    if(marks.has(p)&&blocks[markAt])blocks[markAt].c=marks.get(p);
   }
   return {title,author,blocks};
 }
@@ -987,7 +1060,7 @@ const AI_VOICES=[["bf_emma","Emma","f","gb",1],["bm_george","George","m","gb"],[
   ["af_kore","Kore","f","us"],["af_sarah","Sarah","f","us"],["am_fenrir","Fenrir","m","us"],["am_michael","Michael","m","us"],
   ["am_puck","Puck","m","us"],["af_nova","Nova","f","us"],["af_alloy","Alloy","f","us"]];
 const HF_BASE="https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/";
-const AHEAD_MAX=45*60;           // keep up to 45 minutes of audio ready in memory (MP3, about 16 MB)
+const AHEAD_MAX=120*60;          // keep up to 2 hours of audio ready in memory (MP3, about 44 MB) for screen-off listening
 const AI={state:"off",worker:null,device:"",audio:new Map(),inflight:new Map(),nextId:1,gen:0,el:new Audio(),seg:null,
   durs:new Map(),durKey:"",filling:false,fillAgain:false,prep:null,speed:[],
   waiting:false,waitIdx:-1,playWhenReady:false,previewAfterLoad:false,previewId:-1,rate:24000,started:false,switching:false,loaded:0,total:0,revert:""};
@@ -1100,6 +1173,16 @@ function aiMsg(e){
     aiFill();updateStatus();updatePrepUI();
   }
 }
+// Saved audio you've already listened to is deleted, keeping the last 5 minutes in case you skip back.
+function aiTrimBehind(){
+  if(!isAI()||!AI.durs.size||!cur)return;
+  let t=0,cut=idx;while(cut>0&&t<5*60){cut--;t+=aiDur(cut)}
+  const prefix=aiKeyPrefix(),gone=[];
+  for(const k of AI.durs.keys())if(k<cut)gone.push(k);
+  if(!gone.length)return;
+  for(const k of gone){AI.durs.delete(k);AI.audio.delete(k)}
+  ADB.del(gone.map(k=>prefix+k));
+}
 function aiDur(i){return AI.durs.get(i)||0}   // includes the pause after the piece
 function aiSpeed(){let a=0,ms=0;for(const [d,t] of AI.speed){a+=d;ms+=t}return ms?a/(ms/1000):0}   // seconds of audio made per second
 function aiHas(i){return AI.audio.has(i)||AI.durs.has(i)}
@@ -1115,8 +1198,8 @@ async function aiLoadIndex(){
   aiFill();
 }
 function aiGap(i){const a=sents[i],b=sents[i+1];if(!a||!b)return .3;
-  if(a.el.parentNode!==b.el.parentNode)return .45;
-  return /[,;:—–]\s*$/.test(a.text)?.05:.12}
+  if(a.el.parentNode!==b.el.parentNode)return .3;
+  return /[,;:—–]\s*$/.test(a.text)?0:.06}
 function aiAhead(){let t=0;for(let i=idx;i<sents.length&&aiHas(i);i++)t+=aiDur(i);
   if(AI.seg&&playing){const e=AI.seg.list.find(x=>x.i===idx);if(e)t-=Math.max(0,AI.el.currentTime-e.t0)}
   return Math.max(0,t)}
@@ -1146,7 +1229,7 @@ async function aiFillOnce(){
   const busyIdx=new Set();for(const j of AI.inflight.values())if(j.gen===AI.gen)busyIdx.add(j.i);
   let ahead=0,k=0,counting=true;
   for(;k<n&&busyIdx.size<2;k++){
-    const i=whole?(idx+k)%n:idx+k;if(i>=n)break;
+    const i=idx+k;if(i>=n)break;
     if(aiHas(i)){if(counting){ahead+=aiDur(i);if(ahead>target&&!whole){aiPrepCheck();return}}continue}
     if(!whole&&ahead>target)return;
     if(busyIdx.has(i)){counting=false;continue}
@@ -1233,14 +1316,14 @@ let msReady=false;
 function setMediaSession(){
   if(!("mediaSession" in navigator)||!cur)return;
   try{
-    navigator.mediaSession.metadata=new MediaMetadata({title:cur.title,artist:cur.author||"",album:"Earshot",
+    navigator.mediaSession.metadata=new MediaMetadata({title:curChapter?curChapter.title:cur.title,artist:cur.author||"",album:cur.title,
       artwork:[{src:"icon-512.png",sizes:"512x512",type:"image/png"},{src:"icon-192.png",sizes:"192x192",type:"image/png"}]});
     if(msReady)return;msReady=true;
     const h=(a,f)=>{try{navigator.mediaSession.setActionHandler(a,f)}catch(e){}};
     h("play",()=>{if(!playing)play()});
     h("pause",()=>{if(playing)stop()});
-    h("previoustrack",()=>$("#prev").click());
-    h("nexttrack",()=>$("#next").click());
+    h("previoustrack",()=>chapters.length>1?jumpChapter(-1):$("#prev").click());
+    h("nexttrack",()=>chapters.length>1?jumpChapter(1):$("#next").click());
     h("seekbackward",()=>$("#prev").click());
     h("seekforward",()=>$("#next").click());
   }catch(e){}
@@ -1381,19 +1464,19 @@ function prepStop(silent,keepResume){
   if(!silent)toast("Stopped preparing. What's done so far is saved.");
 }
 function bookStats(){
-  // pieces saved for this book and voice, and estimates for the rest
-  let doneW=0;for(const i of AI.durs.keys())if(sents[i])doneW+=(wordsBefore[i+1]??totalWords)-wordsBefore[i];
-  let doneSec=0;for(const d of AI.durs.values())doneSec+=d;
+  // saved audio from your current spot to the end of the book, and estimates for the rest
+  const restW=Math.max(1,totalWords-(wordsBefore[idx]||0));
+  let doneW=0,doneSec=0,missing=false;
+  for(let i=idx;i<sents.length;i++){const d=AI.durs.get(i);if(d==null){missing=true;continue}doneSec+=d;doneW+=(wordsBefore[i+1]??totalWords)-wordsBefore[i]}
   const secPerWord=doneW>200?doneSec/doneW:60/165;
-  const totalSec=totalWords*secPerWord,leftSec=Math.max(0,(totalWords-doneW)*secPerWord);
-  return {pct:totalWords?Math.min(100,doneW/totalWords*100):0,totalSec,leftSec,complete:AI.durs.size>=sents.length};
+  return {pct:Math.min(100,doneW/restW*100),totalSec:restW*secPerWord,leftSec:Math.max(0,(restW-doneW)*secPerWord),complete:!missing};
 }
 function aiPrepCheck(endOfBook){
   if(!AI.prep)return;
   if(AI.prep.whole){
     if(endOfBook||bookStats().complete){
       AI.prep=null;settings.prepBook="";saveSettings();if(!playing)keepAwake(false);updatePrepUI();
-      toast("The whole book is saved. It plays instantly, even offline or with your screen off.");
+      toast("The rest of the book is saved. It plays instantly, even offline or with your screen off.");
     }
     return;
   }
@@ -1413,7 +1496,7 @@ function updatePrepUI(){
   if(AI.prep&&AI.prep.whole){
     $("#prepBtn").classList.add("busy");$("#prepLabel").textContent=Math.floor(st.pct)+"%";
     $("#prepBar").style.width=st.pct.toFixed(1)+"%";
-    $("#prepText").textContent=`Saved ${Math.floor(st.pct)}% of the book`+(sp>0?` · about ${fmtHM(st.leftSec/sp)} to go`:"");
+    $("#prepText").textContent=`Saved ${Math.floor(st.pct)}% of the rest of the book`+(sp>0?` · about ${fmtHM(st.leftSec/sp)} to go`:"");
   }else if(AI.prep){
     const pct=Math.min(100,ahead/AI.prep.seconds*100);
     $("#prepBtn").classList.add("busy");$("#prepLabel").textContent=Math.floor(pct)+"%";
@@ -1422,7 +1505,7 @@ function updatePrepUI(){
   }else{$("#prepBtn").classList.remove("busy");$("#prepLabel").textContent=st&&st.complete?"Saved":"Prepare"}
   if(st){
     const mb=Math.max(1,Math.round(st.totalSec/3600*22));
-    $("#prepWholeInfo").textContent=st.complete?"Already saved: the whole book plays instantly"
+    $("#prepWholeInfo").textContent=st.complete?"Already saved: the rest of the book plays instantly"
       :`About ${fmtHM(st.totalSec)} of audio, ~${mb} MB`+(st.pct>=1?` · ${Math.floor(st.pct)}% saved already`:"")+(sp>0?` · takes about ${fmtHM(st.leftSec/sp)}`:"");
     $("#prepWhole").disabled=st.complete;
   }
@@ -1435,7 +1518,7 @@ async function showSpace(){
 $("#prepBtn").addEventListener("click",()=>{$("#prepSheet").hidden=false;$("#prepScrim").hidden=false;updatePrepUI();showSpace()});
 const closePrep=()=>{$("#prepSheet").hidden=true;$("#prepScrim").hidden=true};
 $("#prepClose").addEventListener("click",closePrep);$("#prepScrim").addEventListener("click",closePrep);
-document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#prepSheet").hidden)closePrep()});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#prepSheet").hidden)closePrep();if(e.key==="Escape"&&!$("#chapSheet").hidden)closeChapters()});
 $("#prepSheet").addEventListener("click",e=>{const b=e.target.closest("[data-min]");if(b)prepStart(+b.dataset.min)});
 $("#prepWhole").addEventListener("click",()=>prepStart("book"));
 $("#prepStopBtn").addEventListener("click",()=>prepStop(false));
